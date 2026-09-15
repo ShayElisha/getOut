@@ -1,4 +1,5 @@
 import { createSeedData, writeState } from '../server/data.js'
+import { actorFromRequest } from '../server/audit.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -7,7 +8,12 @@ export default async function handler(req, res) {
     return
   }
   try {
-    res.status(200).json(await writeState(createSeedData()))
+    res.status(200).json(
+      await writeState(createSeedData(), {
+        action: 'data_reset',
+        actor: actorFromRequest(req),
+      }),
+    )
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to seed data' })

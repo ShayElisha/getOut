@@ -11,7 +11,7 @@ import {
   Save,
   Plus,
 } from 'lucide-react'
-import { isQualified } from '../algorithm'
+import { isQualified, buildSameDayMorningContext, afternoonHandoffTier } from '../algorithm'
 import { useApp } from '../context/AppContext'
 import { SHIFT_TYPE_LABELS } from '../constants'
 import { CertChips, IntensityBadge } from '../components/ui'
@@ -78,6 +78,19 @@ export function ShiftPage() {
     )
   }, [draft, data.workers])
 
+  const morningCtx = useMemo(() => {
+    if (!draft || draft.shiftType !== 'afternoon') return null
+    return buildSameDayMorningContext(data.history, draft.date)
+  }, [draft, data.history])
+
+  const handoffOptionLabel = (workerId: string, fullName: string, laneId: string) => {
+    if (!morningCtx?.found) return fullName
+    const tier = afternoonHandoffTier(workerId, laneId, morningCtx)
+    if (tier === 0) return `${fullName} · צהריים בלבד`
+    if (tier === 1) return `${fullName} · ממשיך (היה כאן בבוקר)`
+    return `${fullName} · ממשיך מבוקר`
+  }
+
   const handleAutoAssign = () => {
     setExtraAskedOnce(false)
     setExtraFlow('closed')
@@ -106,6 +119,14 @@ export function ShiftPage() {
   }
 
   const handleSave = async () => {
+    if (!draft) return
+    if (draft.unassignedWorkerIds.length > 0) {
+      setSaveFlash(false)
+      window.alert(
+        `לא ניתן לשמור — נשארו ${draft.unassignedWorkerIds.length} בודקים שלא שובצו לעמדה.\nשבצו את כולם (או הוסיפו לעמדה) לפני השמירה.`,
+      )
+      return
+    }
     try {
       await saveCurrentShift()
       setSaveFlash(true)
@@ -136,9 +157,6 @@ export function ShiftPage() {
     .filter(Boolean)
 
   const pickLane = data.lanes.find((l) => l.id === pickLaneId)
-  const qualifiedUnassigned = unassignedWorkers.filter(
-    (w) => w && pickLane && isQualified(w, pickLane),
-  )
 
   return (
     <div className="space-y-4 sm:space-y-5">
@@ -380,15 +398,27 @@ export function ShiftPage() {
             <div>
               <h2 className="font-display text-base font-bold sm:text-lg">לוח שיבוץ</h2>
               <p className="text-xs text-ink-soft sm:text-sm">
-                עריכה ידנית מרשימה נפתחת · לחצו שמירה לשמירה בהיסטוריה
+                {draft.unassignedWorkerIds.length > 0
+                  ? `לא ניתן לשמור עד שכל הנוכחים ישובצו (${draft.unassignedWorkerIds.length} ממתינים)`
+                  : 'עריכה ידנית מרשימה נפתחת · לחצו שמירה לשמירה בהיסטוריה'}
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5 sm:gap-2">
               <button
                 type="button"
                 onClick={handleSave}
+                disabled={draft.unassignedWorkerIds.length > 0}
+                title={
+                  draft.unassignedWorkerIds.length > 0
+                    ? 'יש בודקים שלא שובצו — לא ניתן לשמור'
+                    : undefined
+                }
                 className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition sm:px-3 sm:py-2 sm:text-sm ${
-                  saveFlash ? 'bg-ok' : 'bg-brand hover:bg-brand-deep'
+                  draft.unassignedWorkerIds.length > 0
+                    ? 'cursor-not-allowed bg-brand/40'
+                    : saveFlash
+                      ? 'bg-ok'
+                      : 'bg-brand hover:bg-brand-deep'
                 }`}
               >
                 {saveFlash ? (
@@ -406,8 +436,7 @@ export function ShiftPage() {
                 <Sparkles className="size-3.5 sm:size-4" />
                 שבץ מחדש
               </button>
-              {draft.unassignedWorkerIds.length > 0 &&
-                draft.presentWorkerIds.length > draft.activeLaneIds.length && (
+              {draft.unassignedWorkerIds.length > 0 && (
                   <button
                     type="button"
                     onClick={() => {
@@ -474,6 +503,11 @@ export function ShiftPage() {
                         </button>
                       </div>
                       <div className="flex items-center gap-1.5 sm:gap-2">
+                        {lane.afternoonHandoff && (
+                          <span className="rounded-md bg-[#f3e0d4] px-1.5 py-0.5 text-[9px] font-bold text-[#c45c26] sm:px-2 sm:text-[10px]">
+                            החלפת צהריים
+                          </span>
+                        )}
                         {slots.filter(Boolean).length > lane.staffingStandard && (
                           <span className="rounded-md bg-[#f3e0d4] px-1.5 py-0.5 text-[9px] font-bold text-[#c45c26] sm:px-2 sm:text-[10px]">
                             +תוספת
@@ -487,53 +521,109 @@ export function ShiftPage() {
                         const present = data.workers.filter((w) =>
                           draft.presentWorkerIds.includes(w.id),
                         )
-                        const options = present.filter(
-                          (w) =>
-                            isQualified(w, lane) &&
-                            (w.id === workerId ||
-                              !draft.assignments.some((a) =>
-                                a.workerIds.includes(w.id),
-                              ) ||
-                              draft.assignments
-                                .find((a) => a.laneId === laneId)
-                                ?.workerIds.includes(w.id)),
-                        )
+                        const options = present
+                          .filter((w) => {
+                            // Always keep the worker currently in this slot
+                            if (w.id === workerId) return true
+                            // Only people not assigned to any lane
+                            return !draft.assignments.some((a) =>
+                              a.workerIds.includes(w.id),
+                            )
+                          })
+                          .slice()
+                          .sort((a, b) => {
+                            const qa = isQualified(a, lane) ? 0 : 1
+                            const qb = isQualified(b, lane) ? 0 : 1
+                            if (qa !== qb) return qa - qb
+                            if (
+                              lane.afternoonHandoff &&
+                              draft.shiftType === 'afternoon'
+                            ) {
+                              const ta = afternoonHandoffTier(
+                                a.id,
+                                laneId,
+                                morningCtx,
+                              )
+                              const tb = afternoonHandoffTier(
+                                b.id,
+                                laneId,
+                                morningCtx,
+                              )
+                              if (ta !== tb) return ta - tb
+                            }
+                            return a.fullName.localeCompare(b.fullName, 'he')
+                          })
                         const isExtra = slotIndex >= lane.staffingStandard
+                        const selectedWorker = workerId
+                          ? data.workers.find((w) => w.id === workerId)
+                          : null
+                        const selectedLacksCert =
+                          selectedWorker != null &&
+                          !isQualified(selectedWorker, lane)
+
+                        const optionLabel = (w: (typeof options)[number]) => {
+                          let label =
+                            lane.afternoonHandoff &&
+                            draft.shiftType === 'afternoon'
+                              ? handoffOptionLabel(w.id, w.fullName, laneId)
+                              : w.fullName
+                          if (!isQualified(w, lane)) {
+                            label += ' (ללא הסמכה מלאה)'
+                          }
+                          return label
+                        }
 
                         return (
-                          <div key={slotIndex} className="flex items-center gap-1.5 sm:gap-2">
-                            <span className="w-4 text-[10px] text-[#3d4f66] sm:w-5 sm:text-xs">
-                              {slotIndex + 1}.
-                            </span>
-                            <select
-                              className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-medium text-[#0f1c2e] sm:px-3 sm:py-2 sm:text-sm ${
-                                isExtra
-                                  ? 'border-[#c45c26]/40 bg-[#f3e0d4]/50'
-                                  : 'border-[#d5dee8] bg-[#f3f6f9]'
-                              }`}
-                              value={workerId || ''}
-                              onChange={(e) =>
-                                updateAssignment(
-                                  laneId,
-                                  slotIndex,
-                                  e.target.value || null,
-                                )
-                              }
-                            >
-                              <option value="">— פנוי —</option>
-                              {options.map((w) => (
-                                <option key={w.id} value={w.id}>
-                                  {w.fullName}
-                                </option>
-                              ))}
-                              {workerId &&
-                                !options.some((w) => w.id === workerId) && (
-                                  <option value={workerId}>
-                                    {data.workers.find((w) => w.id === workerId)
-                                      ?.fullName ?? workerId}
+                          <div key={slotIndex} className="space-y-1">
+                            <div className="flex items-center gap-1.5 sm:gap-2">
+                              <span className="w-4 text-[10px] text-[#3d4f66] sm:w-5 sm:text-xs">
+                                {slotIndex + 1}.
+                              </span>
+                              <select
+                                className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-medium text-[#0f1c2e] sm:px-3 sm:py-2 sm:text-sm ${
+                                  selectedLacksCert
+                                    ? 'border-warn/50 bg-warn-soft/40'
+                                    : isExtra
+                                      ? 'border-[#c45c26]/40 bg-[#f3e0d4]/50'
+                                      : 'border-[#d5dee8] bg-[#f3f6f9]'
+                                }`}
+                                value={workerId || ''}
+                                onChange={(e) =>
+                                  updateAssignment(
+                                    laneId,
+                                    slotIndex,
+                                    e.target.value || null,
+                                  )
+                                }
+                              >
+                                <option value="">— פנוי —</option>
+                                {options.map((w) => (
+                                  <option key={w.id} value={w.id}>
+                                    {optionLabel(w)}
                                   </option>
-                                )}
-                            </select>
+                                ))}
+                                {workerId &&
+                                  !options.some((w) => w.id === workerId) && (
+                                    <option value={workerId}>
+                                      {optionLabel(
+                                        selectedWorker ?? {
+                                          id: workerId,
+                                          fullName: workerId,
+                                          phone: '',
+                                          certifications: [],
+                                          status: 'active',
+                                          isManager: false,
+                                        },
+                                      )}
+                                    </option>
+                                  )}
+                              </select>
+                            </div>
+                            {selectedLacksCert && (
+                              <p className="pr-5 text-[10px] font-medium text-warn sm:pr-6 sm:text-[11px]">
+                                שימו לב: לבודק זה חסרה הסמכה מלאה לנתיב שנבחר.
+                              </p>
+                            )}
                           </div>
                         )
                       })}
@@ -658,10 +748,7 @@ export function ShiftPage() {
                       onChange={(e) => setPickWorkerId(e.target.value)}
                     >
                       <option value="">— בחר בודק —</option>
-                      {(qualifiedUnassigned.length
-                        ? qualifiedUnassigned
-                        : unassignedWorkers
-                      ).map(
+                      {unassignedWorkers.map(
                         (w) =>
                           w && (
                             <option key={w.id} value={w.id}>

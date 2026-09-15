@@ -1,4 +1,5 @@
 import { deleteShift, upsertShift } from '../../server/data.js'
+import { actorFromRequest } from '../../server/audit.js'
 
 export default async function handler(req, res) {
   const id = req.query.id
@@ -9,11 +10,11 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'PUT') {
-      res.status(200).json(await upsertShift(id, req.body))
+      res.status(200).json(await upsertShift(id, req.body, actorFromRequest(req)))
       return
     }
     if (req.method === 'DELETE') {
-      res.status(200).json(await deleteShift(id))
+      res.status(200).json(await deleteShift(id, actorFromRequest(req)))
       return
     }
     res.setHeader('Allow', 'PUT, DELETE')

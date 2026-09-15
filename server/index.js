@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
+import { actorFromRequest, listAuditLogs } from './audit.js'
 import {
   createSeedData,
   deleteShift,
@@ -46,16 +47,21 @@ app.get('/api/data', async (_req, res) => {
 
 app.put('/api/data', async (req, res) => {
   try {
-    res.json(await writeState(req.body))
+    res.json(await writeState(req.body, { actor: actorFromRequest(req) }))
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to save data' })
   }
 })
 
-app.post('/api/seed', async (_req, res) => {
+app.post('/api/seed', async (req, res) => {
   try {
-    res.json(await writeState(createSeedData()))
+    res.json(
+      await writeState(createSeedData(), {
+        action: 'data_reset',
+        actor: actorFromRequest(req),
+      }),
+    )
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to seed data' })
@@ -64,7 +70,7 @@ app.post('/api/seed', async (_req, res) => {
 
 app.put('/api/shifts/:id', async (req, res) => {
   try {
-    res.json(await upsertShift(req.params.id, req.body))
+    res.json(await upsertShift(req.params.id, req.body, actorFromRequest(req)))
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to save shift' })
@@ -73,10 +79,20 @@ app.put('/api/shifts/:id', async (req, res) => {
 
 app.delete('/api/shifts/:id', async (req, res) => {
   try {
-    res.json(await deleteShift(req.params.id))
+    res.json(await deleteShift(req.params.id, actorFromRequest(req)))
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to delete shift' })
+  }
+})
+
+app.get('/api/audit', async (req, res) => {
+  try {
+    const limit = req.query.limit
+    res.json(await listAuditLogs({ limit }))
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to load audit log' })
   }
 })
 

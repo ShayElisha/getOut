@@ -22,3 +22,8 @@ export async function getStateCollection() {
   const db = await getDb()
   return db.collection('app_state')
 }
+
+export async function getAuditCollection() {
+  const db = await getDb()
+  return db.collection('audit_logs')
+}

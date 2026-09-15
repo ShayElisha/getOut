@@ -7,6 +7,8 @@ import {
   Users,
   BadgeCheck,
   LogOut,
+  Table2,
+  ScrollText,
 } from 'lucide-react'
 import type { View } from '../types'
 import { useApp } from '../context/AppContext'
@@ -17,6 +19,8 @@ const NAV: { id: View; label: string; icon: typeof Home }[] = [
   { id: 'workers', label: 'בודקים', icon: Users },
   { id: 'lanes', label: 'נתיבים', icon: LayoutGrid },
   { id: 'certs', label: 'הסמכות', icon: BadgeCheck },
+  { id: 'tracking', label: 'מעקב', icon: Table2 },
+  { id: 'audit', label: 'יומן', icon: ScrollText },
   { id: 'history', label: 'היסטוריה', icon: History },
 ]
 
@@ -43,7 +47,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-6xl flex-col px-3.5 pb-20 pt-4 sm:px-6 sm:pt-6 lg:pb-8 lg:pt-8">
+    <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-3.5 pb-20 pt-4 sm:px-6 sm:pt-6 lg:pb-8 lg:pt-8">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3 animate-fade-up sm:mb-8 sm:gap-4">
         <div>
           <p className="mb-0.5 text-[10px] font-semibold tracking-[0.18em] text-accent uppercase sm:mb-1 sm:text-xs sm:tracking-[0.2em]">
@@ -121,7 +125,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
           <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 px-1.5 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur lg:hidden">
             <div className="mx-auto flex max-w-lg justify-around">
-              {NAV.filter((n) => n.id !== 'certs').map(({ id, label, icon: Icon }) => {
+              {NAV.filter((n) => n.id !== 'certs' && n.id !== 'lanes' && n.id !== 'tracking').map(({ id, label, icon: Icon }) => {
                 const active = view === id
                 return (
                   <button

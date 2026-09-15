@@ -6,6 +6,8 @@ import { WorkersPage } from './pages/WorkersPage'
 import { LanesPage } from './pages/LanesPage'
 import { CertsPage } from './pages/CertsPage'
 import { HistoryPage } from './pages/HistoryPage'
+import { TrackingPage } from './pages/TrackingPage'
+import { AuditPage } from './pages/AuditPage'
 import { LoginPage } from './pages/LoginPage'
 
 function Router() {
@@ -21,6 +23,10 @@ function Router() {
       return <CertsPage />
     case 'history':
       return <HistoryPage />
+    case 'tracking':
+      return <TrackingPage />
+    case 'audit':
+      return <AuditPage />
     default:
       return <HomePage />
   }

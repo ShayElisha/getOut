@@ -9,6 +9,7 @@ const emptyForm = (): Omit<Lane, 'id'> => ({
   staffingStandard: 1,
   requiredCertifications: [],
   intensity: 'medium',
+  afternoonHandoff: false,
 })
 
 export function LanesPage() {
@@ -31,6 +32,7 @@ export function LanesPage() {
       staffingStandard: l.staffingStandard,
       requiredCertifications: [...l.requiredCertifications],
       intensity: l.intensity,
+      afternoonHandoff: Boolean(l.afternoonHandoff),
     })
   }
 
@@ -60,7 +62,7 @@ export function LanesPage() {
   return (
     <SectionCard
       title="נתיבים ועמדות"
-      subtitle="תקן כוח אדם, הסמכות נדרשות ודרגת עצימות"
+      subtitle="תקן כוח אדם, הסמכות, עצימות והחלפת צהריים"
       actions={
         <button
           type="button"
@@ -113,6 +115,23 @@ export function LanesPage() {
                 <option value="medium">בינוני</option>
                 <option value="hard">קשה</option>
               </select>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-card px-3 py-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={Boolean(form.afternoonHandoff)}
+                onChange={(e) =>
+                  setForm({ ...form, afternoonHandoff: e.target.checked })
+                }
+              />
+              <span>
+                <span className="font-semibold text-ink">החלפת צהריים</span>
+                <span className="mt-0.5 block text-xs text-ink-soft">
+                  כמו מכס: קודם מי שמגיע רק לצהריים; בחוסר — ממשיך שהיה שם בבוקר; אחרת
+                  ממשיך אחר ממשמרת ארוכה
+                </span>
+              </span>
             </label>
             <div className="sm:col-span-2">
               <p className="mb-2 text-sm text-ink-soft">
@@ -168,6 +187,11 @@ export function LanesPage() {
               <div>
                 <h3 className="font-bold text-ink">{l.name}</h3>
                 <p className="mt-1 text-xs text-ink-soft">תקן: {l.staffingStandard}</p>
+                {l.afternoonHandoff && (
+                  <p className="mt-1 text-[11px] font-semibold text-accent">
+                    החלפת צהריים
+                  </p>
+                )}
               </div>
               <IntensityBadge intensity={l.intensity} />
             </div>

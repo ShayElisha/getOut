@@ -19,6 +19,11 @@ export interface Lane {
   /** Worker must hold all listed certifications */
   requiredCertifications: string[]
   intensity: Intensity
+  /**
+   * Afternoon handoff lane (e.g. מכס): prefer staff who arrive only for afternoon.
+   * Long-shift continuers (morning→afternoon) are fallbacks only.
+   */
+  afternoonHandoff?: boolean
 }
 
 export interface LaneAssignment {
@@ -51,4 +56,6 @@ export type View =
   | 'workers'
   | 'lanes'
   | 'history'
+  | 'tracking'
+  | 'audit'
   | 'certs'

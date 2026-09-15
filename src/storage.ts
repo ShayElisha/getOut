@@ -79,6 +79,14 @@ function seedLanes(): Lane[] {
     },
     {
       id: uuid(),
+      name: 'מכס',
+      staffingStandard: 1,
+      requiredCertifications: [],
+      intensity: 'medium',
+      afternoonHandoff: true,
+    },
+    {
+      id: uuid(),
       name: 'ראיונות',
       staffingStandard: 1,
       requiredCertifications: [],

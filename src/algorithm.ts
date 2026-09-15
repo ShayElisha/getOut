@@ -1,5 +1,12 @@
 import { INTENSITY_SCORE } from './constants'
-import type { Intensity, Lane, LaneAssignment, ShiftSchedule, Worker } from './types'
+import type {
+  Intensity,
+  Lane,
+  LaneAssignment,
+  ShiftSchedule,
+  ShiftType,
+  Worker,
+} from './types'
 
 export interface AssignmentResult {
   assignments: LaneAssignment[]
@@ -7,6 +14,25 @@ export interface AssignmentResult {
   understaffedLaneIds: string[]
   warnings: string[]
 }
+
+export interface AssignmentContext {
+  date: string
+  shiftType: ShiftType
+  /** Calendar days of history to consider (default 14) */
+  lookbackDays?: number
+}
+
+export interface WorkerLaneStats {
+  workerId: string
+  /** laneId → times assigned */
+  byLane: Record<string, number>
+  hardCount: number
+  mediumCount: number
+  easyCount: number
+  totalAssignments: number
+}
+
+const DEFAULT_LOOKBACK_DAYS = 14
 
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr]
@@ -17,105 +43,316 @@ function shuffle<T>(arr: T[]): T[] {
   return copy
 }
 
+/** Local calendar date distance (avoids UTC off-by-one) */
+function daysBetweenLocal(earlier: string, later: string): number {
+  const [ey, em, ed] = earlier.split('-').map(Number)
+  const [ly, lm, ld] = later.split('-').map(Number)
+  if (!ey || !em || !ed || !ly || !lm || !ld) return Number.POSITIVE_INFINITY
+  const a = Date.UTC(ey, em - 1, ed)
+  const b = Date.UTC(ly, lm - 1, ld)
+  return Math.floor((b - a) / (24 * 60 * 60 * 1000))
+}
+
+/** History strictly before current date, within lookback window, newest first */
+export function filterRelevantHistory(
+  history: ShiftSchedule[],
+  currentDate: string,
+  lookbackDays = DEFAULT_LOOKBACK_DAYS,
+): ShiftSchedule[] {
+  return history
+    .filter((h) => {
+      if (h.date >= currentDate) return false
+      return daysBetweenLocal(h.date, currentDate) <= lookbackDays
+    })
+    .sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date)
+      return b.createdAt.localeCompare(a.createdAt)
+    })
+}
+
 /** Worker must hold every required certification for the lane */
 export function isQualified(worker: Worker, lane: Lane): boolean {
   if (lane.requiredCertifications.length === 0) return true
   return lane.requiredCertifications.every((c) => worker.certifications.includes(c))
 }
 
+interface WorkerHistoryProfile {
+  load: number
+  hardCount: number
+  hardInSameShiftType: number
+  laneCounts: Map<string, number>
+  lastLaneIds: Set<string>
+  laneRecency: Map<string, number>
+  lastWasHard: boolean
+  lastShiftType: ShiftType | null
+  shiftsSeen: number
+}
+
+function buildWorkerProfile(
+  workerId: string,
+  history: ShiftSchedule[],
+  lanes: Lane[],
+  currentShiftType: ShiftType,
+): WorkerHistoryProfile {
+  const laneMap = new Map(lanes.map((l) => [l.id, l]))
+  const profile: WorkerHistoryProfile = {
+    load: 0,
+    hardCount: 0,
+    hardInSameShiftType: 0,
+    laneCounts: new Map(),
+    lastLaneIds: new Set(),
+    laneRecency: new Map(),
+    lastWasHard: false,
+    lastShiftType: null,
+    shiftsSeen: 0,
+  }
+
+  let capturedLastShift = false
+
+  history.forEach((shift, shiftIndex) => {
+    const placements: Lane[] = []
+    for (const assignment of shift.assignments) {
+      if (!assignment.workerIds.includes(workerId)) continue
+      const lane = laneMap.get(assignment.laneId)
+      if (!lane) continue
+      placements.push(lane)
+      profile.laneCounts.set(lane.id, (profile.laneCounts.get(lane.id) ?? 0) + 1)
+      if (!profile.laneRecency.has(lane.id)) {
+        profile.laneRecency.set(lane.id, shiftIndex)
+      }
+      profile.load += INTENSITY_SCORE[lane.intensity]
+      if (lane.intensity === 'hard') {
+        profile.hardCount += 1
+        if (shift.shiftType === currentShiftType) {
+          profile.hardInSameShiftType += 1
+        }
+      }
+    }
+
+    if (placements.length === 0) return
+
+    profile.shiftsSeen += 1
+    if (!capturedLastShift) {
+      profile.lastShiftType = shift.shiftType
+      for (const lane of placements) {
+        profile.lastLaneIds.add(lane.id)
+        if (lane.intensity === 'hard') profile.lastWasHard = true
+      }
+      capturedLastShift = true
+    }
+  })
+
+  return profile
+}
+
+function needsEasyAfterNight(
+  profile: WorkerHistoryProfile,
+  currentShiftType: ShiftType,
+): boolean {
+  return currentShiftType === 'afternoon' && profile.lastShiftType === 'night'
+}
+
 export function computeWorkerLoad(
   workerId: string,
   history: ShiftSchedule[],
   lanes: Lane[],
-  lookback = 8,
+  lookbackShifts = 8,
 ): number {
   const laneMap = new Map(lanes.map((l) => [l.id, l]))
   let load = 0
   let counted = 0
 
   for (const shift of history) {
-    if (counted >= lookback) break
+    if (counted >= lookbackShifts) break
+    let placed = false
     for (const assignment of shift.assignments) {
       if (!assignment.workerIds.includes(workerId)) continue
       const lane = laneMap.get(assignment.laneId)
       if (!lane) continue
       load += INTENSITY_SCORE[lane.intensity]
-      counted += 1
+      placed = true
     }
+    if (placed) counted += 1
   }
   return load
 }
 
-function recentHardCount(
-  workerId: string,
-  history: ShiftSchedule[],
-  lanes: Lane[],
-  lookback = 5,
-): number {
-  const laneMap = new Map(lanes.map((l) => [l.id, l]))
-  let hard = 0
-  let seen = 0
-
-  for (const shift of history) {
-    if (seen >= lookback) break
-    for (const assignment of shift.assignments) {
-      if (!assignment.workerIds.includes(workerId)) continue
-      seen += 1
-      const lane = laneMap.get(assignment.laneId)
-      if (lane?.intensity === 'hard') hard += 1
-    }
-  }
-  return hard
+/** Same-day morning shift context for afternoon handoff lanes */
+export interface SameDayMorningContext {
+  found: boolean
+  morningWorkerIds: Set<string>
+  workersByLane: Map<string, Set<string>>
+  lanesByWorker: Map<string, Set<string>>
 }
 
-function preferenceScore(
-  workerId: string,
-  lane: Lane,
+export function buildSameDayMorningContext(
   history: ShiftSchedule[],
-  allLanes: Lane[],
-): number {
-  const load = computeWorkerLoad(workerId, history, allLanes)
-  const hardRecent = recentHardCount(workerId, history, allLanes)
-  const laneScore = INTENSITY_SCORE[lane.intensity]
-  const balance =
-    load * (4 - laneScore) +
-    hardRecent * (lane.intensity === 'easy' ? 5 : lane.intensity === 'medium' ? 2 : -3)
-  const hardFill = lane.intensity === 'hard' ? -load * 2 : 0
-  return balance + hardFill + Math.random() * 0.01
+  date: string,
+): SameDayMorningContext {
+  const mornings = history
+    .filter((h) => h.date === date && h.shiftType === 'morning')
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+
+  const morning = mornings[0]
+  const morningWorkerIds = new Set<string>()
+  const workersByLane = new Map<string, Set<string>>()
+  const lanesByWorker = new Map<string, Set<string>>()
+
+  if (!morning) {
+    return { found: false, morningWorkerIds, workersByLane, lanesByWorker }
+  }
+
+  for (const id of morning.presentWorkerIds ?? []) morningWorkerIds.add(id)
+
+  for (const assignment of morning.assignments ?? []) {
+    const set = workersByLane.get(assignment.laneId) ?? new Set()
+    for (const wid of assignment.workerIds) {
+      if (!wid) continue
+      morningWorkerIds.add(wid)
+      set.add(wid)
+      const lanes = lanesByWorker.get(wid) ?? new Set()
+      lanes.add(assignment.laneId)
+      lanesByWorker.set(wid, lanes)
+    }
+    workersByLane.set(assignment.laneId, set)
+  }
+
+  return { found: true, morningWorkerIds, workersByLane, lanesByWorker }
 }
 
 /**
- * How many other still-open lanes this worker can also fill.
- * Lower = more specialized → should be reserved for constrained lanes.
+ * Afternoon handoff priority (lower = better):
+ * 0 — arrives only for afternoon
+ * 1 — long shift, was on THIS handoff lane in the morning
+ * 2 — long shift, other morning continuer
  */
-function versatility(
-  worker: Worker,
-  otherOpenLanes: Lane[],
+export function afternoonHandoffTier(
+  workerId: string,
+  laneId: string,
+  morning: SameDayMorningContext | null,
 ): number {
+  if (!morning?.found) return 0
+  if (!morning.morningWorkerIds.has(workerId)) return 0
+  if (morning.workersByLane.get(laneId)?.has(workerId)) return 1
+  return 2
+}
+
+function versatility(worker: Worker, otherOpenLanes: Lane[]): number {
   return otherOpenLanes.filter((l) => isQualified(worker, l)).length
 }
 
-/**
- * Smart assignment (scarcity-first):
- * 1. Fill restricted / scarce-cert lanes before open lanes
- * 2. Prefer specialized workers for constrained lanes (don't waste them on open posts)
- * 3. Then balance by historical intensity load
- * 4. Fair random tie-break
- */
+function compareForLane(
+  a: Worker,
+  b: Worker,
+  lane: Lane,
+  profiles: Map<string, WorkerHistoryProfile>,
+  otherOpen: Lane[],
+  currentShiftType: ShiftType,
+  morning: SameDayMorningContext | null,
+): number {
+  const va = versatility(a, otherOpen)
+  const vb = versatility(b, otherOpen)
+  if (va !== vb) return va - vb
+
+  const pa = profiles.get(a.id)!
+  const pb = profiles.get(b.id)!
+
+  if (lane.afternoonHandoff && currentShiftType === 'afternoon') {
+    const ta = afternoonHandoffTier(a.id, lane.id, morning)
+    const tb = afternoonHandoffTier(b.id, lane.id, morning)
+    if (ta !== tb) return ta - tb
+  }
+
+  const aWasLastHere = pa.lastLaneIds.has(lane.id) ? 1 : 0
+  const bWasLastHere = pb.lastLaneIds.has(lane.id) ? 1 : 0
+  if (aWasLastHere !== bWasLastHere) return aWasLastHere - bWasLastHere
+
+  const aTimes = pa.laneCounts.get(lane.id) ?? 0
+  const bTimes = pb.laneCounts.get(lane.id) ?? 0
+  if (aTimes !== bTimes) return aTimes - bTimes
+
+  const aRecency = pa.laneRecency.get(lane.id) ?? Number.POSITIVE_INFINITY
+  const bRecency = pb.laneRecency.get(lane.id) ?? Number.POSITIVE_INFINITY
+  if (aRecency !== bRecency) return bRecency - aRecency
+
+  const aAfterNight = needsEasyAfterNight(pa, currentShiftType) ? 1 : 0
+  const bAfterNight = needsEasyAfterNight(pb, currentShiftType) ? 1 : 0
+  if (aAfterNight !== bAfterNight) {
+    if (lane.intensity === 'easy') return bAfterNight - aAfterNight
+    if (lane.intensity === 'hard') return aAfterNight - bAfterNight
+    return bAfterNight - aAfterNight
+  }
+
+  if (lane.intensity === 'hard') {
+    if (pa.lastWasHard !== pb.lastWasHard) {
+      return (pa.lastWasHard ? 1 : 0) - (pb.lastWasHard ? 1 : 0)
+    }
+    if (pa.hardInSameShiftType !== pb.hardInSameShiftType) {
+      return pa.hardInSameShiftType - pb.hardInSameShiftType
+    }
+    if (pa.hardCount !== pb.hardCount) return pa.hardCount - pb.hardCount
+    if (pa.load !== pb.load) return pa.load - pb.load
+  } else if (lane.intensity === 'easy') {
+    if (pa.lastWasHard !== pb.lastWasHard) {
+      return (pb.lastWasHard ? 1 : 0) - (pa.lastWasHard ? 1 : 0)
+    }
+    if (pa.hardCount !== pb.hardCount) return pb.hardCount - pa.hardCount
+    if (pa.load !== pb.load) return pb.load - pa.load
+  } else {
+    if (pa.hardCount !== pb.hardCount) return pa.hardCount - pb.hardCount
+    if (pa.load !== pb.load) return pa.load - pb.load
+  }
+
+  return 0
+}
+
 export function runAssignmentAlgorithm(
   activeLanes: Lane[],
   presentWorkers: Worker[],
   history: ShiftSchedule[],
   allLanes: Lane[],
+  ctx?: AssignmentContext,
 ): AssignmentResult {
   const warnings: string[] = []
   const available = new Set(presentWorkers.map((w) => w.id))
   const workerById = new Map(presentWorkers.map((w) => [w.id, w]))
 
+  const currentDate = ctx?.date ?? '9999-12-31'
+  const currentShiftType = ctx?.shiftType ?? 'morning'
+  const lookbackDays = ctx?.lookbackDays ?? DEFAULT_LOOKBACK_DAYS
+  const relevant = filterRelevantHistory(history, currentDate, lookbackDays)
+  const morningCtx =
+    currentShiftType === 'afternoon'
+      ? buildSameDayMorningContext(history, currentDate)
+      : null
+
+  if (
+    currentShiftType === 'afternoon' &&
+    activeLanes.some((l) => l.afternoonHandoff) &&
+    !morningCtx?.found
+  ) {
+    warnings.push(
+      'אין שיבוץ בוקר שמור להיום — כללי החלפת צהריים (מכס) פועלים חלקית בלבד',
+    )
+  }
+
+  const profiles = new Map<string, WorkerHistoryProfile>()
+  for (const w of presentWorkers) {
+    profiles.set(
+      w.id,
+      buildWorkerProfile(w.id, relevant, allLanes, currentShiftType),
+    )
+  }
+
   const intensityOrder: Record<Intensity, number> = { hard: 0, medium: 1, easy: 2 }
 
-  // Scarcest / most restricted lanes first; open (no certs) last
   const orderedLanes = [...activeLanes].sort((a, b) => {
+    if (currentShiftType === 'afternoon') {
+      const aH = a.afternoonHandoff ? 0 : 1
+      const bH = b.afternoonHandoff ? 0 : 1
+      if (aH !== bH) return aH - bH
+    }
+
     const aOpen = a.requiredCertifications.length === 0 ? 1 : 0
     const bOpen = b.requiredCertifications.length === 0 ? 1 : 0
     if (aOpen !== bOpen) return aOpen - bOpen
@@ -149,20 +386,17 @@ export function runAssignmentAlgorithm(
       continue
     }
 
-    // Prefer least versatile (specialists) for this lane, then fairness/load
-    const ranked = shuffle(candidates).sort((a, b) => {
-      const va = versatility(a, otherOpen)
-      const vb = versatility(b, otherOpen)
-      if (va !== vb) return va - vb
-
-      // On open lanes, prefer generalists who are already "left over"
-      // (already handled by processing open lanes last)
-
-      return (
-        preferenceScore(b.id, lane, history, allLanes) -
-        preferenceScore(a.id, lane, history, allLanes)
-      )
-    })
+    const ranked = shuffle(candidates).sort((a, b) =>
+      compareForLane(
+        a,
+        b,
+        lane,
+        profiles,
+        otherOpen,
+        currentShiftType,
+        morningCtx,
+      ),
+    )
 
     const needed = lane.staffingStandard
     const picked = ranked.slice(0, needed).map((w) => w.id)
@@ -170,6 +404,25 @@ export function runAssignmentAlgorithm(
     for (const id of picked) available.delete(id)
 
     assignments.push({ laneId: lane.id, workerIds: picked })
+
+    if (
+      lane.afternoonHandoff &&
+      currentShiftType === 'afternoon' &&
+      morningCtx?.found
+    ) {
+      for (const id of picked) {
+        const tier = afternoonHandoffTier(id, lane.id, morningCtx)
+        if (tier === 1) {
+          warnings.push(
+            `נתיב "${lane.name}" — ממשיך מבוקר (היה שם בבוקר); לא נמצא מחליף צהריים`,
+          )
+        } else if (tier === 2) {
+          warnings.push(
+            `נתיב "${lane.name}" — מולא ע״י ממשיך משמרת ארוכה אחר (אין מחליף צהריים / איש הבוקר לא ממשיך)`,
+          )
+        }
+      }
+    }
 
     if (picked.length < needed) {
       understaffedLaneIds.push(lane.id)
@@ -179,7 +432,6 @@ export function runAssignmentAlgorithm(
     }
   }
 
-  // Clarify leftover: separate unqualified-for-all-remaining vs true surplus
   const unassigned = [...available]
   const unassignedWorkers = unassigned.map((id) => workerById.get(id)!)
   const emptyLanes = assignments.filter((a) => a.workerIds.length === 0)
@@ -202,4 +454,50 @@ export function runAssignmentAlgorithm(
     understaffedLaneIds,
     warnings: [...new Set(warnings)],
   }
+}
+
+export function computeWorkerLaneStats(
+  workers: Worker[],
+  lanes: Lane[],
+  history: ShiftSchedule[],
+  options?: { fromDate?: string; toDate?: string },
+): WorkerLaneStats[] {
+  const laneMap = new Map(lanes.map((l) => [l.id, l]))
+  const filtered = history.filter((h) => {
+    if (options?.fromDate && h.date < options.fromDate) return false
+    if (options?.toDate && h.date > options.toDate) return false
+    return true
+  })
+
+  return workers.map((w) => {
+    const byLane: Record<string, number> = {}
+    for (const lane of lanes) byLane[lane.id] = 0
+
+    let hardCount = 0
+    let mediumCount = 0
+    let easyCount = 0
+    let totalAssignments = 0
+
+    for (const shift of filtered) {
+      for (const assignment of shift.assignments) {
+        if (!assignment.workerIds.includes(w.id)) continue
+        byLane[assignment.laneId] = (byLane[assignment.laneId] ?? 0) + 1
+        totalAssignments += 1
+        const lane = laneMap.get(assignment.laneId)
+        if (!lane) continue
+        if (lane.intensity === 'hard') hardCount += 1
+        else if (lane.intensity === 'medium') mediumCount += 1
+        else easyCount += 1
+      }
+    }
+
+    return {
+      workerId: w.id,
+      byLane,
+      hardCount,
+      mediumCount,
+      easyCount,
+      totalAssignments,
+    }
+  })
 }

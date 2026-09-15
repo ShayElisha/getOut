@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { getStateCollection } from './db.js'
+import { appendAuditLog, summarizeAppDataChange } from './audit.js'
 
 export const DEFAULT_CERTIFICATIONS = [
   'בדיקת דרכונים',
@@ -84,6 +85,14 @@ export function createSeedData() {
       },
       {
         id: randomUUID(),
+        name: 'מכס',
+        staffingStandard: 1,
+        requiredCertifications: [],
+        intensity: 'medium',
+        afternoonHandoff: true,
+      },
+      {
+        id: randomUUID(),
         name: 'ראיונות',
         staffingStandard: 1,
         requiredCertifications: [],
@@ -106,10 +115,27 @@ function normalizeWorker(w) {
   }
 }
 
+function normalizeLane(l) {
+  const std = Number(l?.staffingStandard)
+  return {
+    id: l.id,
+    name: l.name || '',
+    staffingStandard: std === 2 ? 2 : 1,
+    requiredCertifications: Array.isArray(l.requiredCertifications)
+      ? l.requiredCertifications
+      : [],
+    intensity:
+      l.intensity === 'easy' || l.intensity === 'hard' || l.intensity === 'medium'
+        ? l.intensity
+        : 'medium',
+    afternoonHandoff: Boolean(l.afternoonHandoff),
+  }
+}
+
 export function normalizeData(raw) {
   return {
     workers: Array.isArray(raw?.workers) ? raw.workers.map(normalizeWorker) : [],
-    lanes: Array.isArray(raw?.lanes) ? raw.lanes : [],
+    lanes: Array.isArray(raw?.lanes) ? raw.lanes.map(normalizeLane) : [],
     history: Array.isArray(raw?.history) ? raw.history : [],
     certificationsCatalog: Array.isArray(raw?.certificationsCatalog)
       ? raw.certificationsCatalog
@@ -128,14 +154,35 @@ export async function readState() {
   return normalizeData(doc)
 }
 
-export async function writeState(data) {
+export async function writeState(data, options = {}) {
   const col = await getStateCollection()
+  const prev = options.skipAudit ? null : await readState().catch(() => null)
   const payload = normalizeData(data)
   await col.updateOne(
     { _id: 'main' },
     { $set: { ...payload, updatedAt: new Date() } },
     { upsert: true },
   )
+
+  if (!options.skipAudit) {
+    if (options.action === 'data_reset') {
+      await appendAuditLog({
+        action: 'data_reset',
+        actor: options.actor,
+        details: options.details || 'איפוס לכל נתוני הדוגמה',
+      })
+    } else if (prev) {
+      const summary = summarizeAppDataChange(prev, payload)
+      if (summary) {
+        await appendAuditLog({
+          action: 'data_update',
+          actor: options.actor,
+          details: summary,
+        })
+      }
+    }
+  }
+
   return payload
 }
 
@@ -158,28 +205,54 @@ export async function loginByPhone(phoneRaw) {
     err.status = 401
     throw err
   }
-  return {
+  const user = {
     id: manager.id,
     fullName: manager.fullName,
     phone: manager.phone,
   }
+  await appendAuditLog({
+    action: 'login',
+    actor: user,
+    details: 'התחברות למערכת',
+  })
+  return user
 }
 
-export async function upsertShift(id, body) {
+export async function upsertShift(id, body, actor) {
   const state = await readState()
   const schedule = { ...body, id }
+  delete schedule.actor
   const idx = state.history.findIndex((h) => h.id === schedule.id)
+  const isNew = idx === -1
   const history =
-    idx === -1
+    isNew
       ? [schedule, ...state.history]
       : state.history.map((h, i) => (i === idx ? { ...h, ...schedule } : h))
-  return writeState({ ...state, history })
+  const saved = await writeState({ ...state, history }, { skipAudit: true })
+  await appendAuditLog({
+    action: isNew ? 'shift_save' : 'shift_update',
+    actor,
+    details: `${schedule.date || '?'} · ${schedule.shiftType || '?'} · ${(schedule.activeLaneIds || []).length} נתיבים · ${(schedule.assignments || []).reduce((n, a) => n + (a.workerIds?.filter(Boolean).length || 0), 0)} שיבוצים`,
+  })
+  return saved
 }
 
-export async function deleteShift(id) {
+export async function deleteShift(id, actor) {
   const state = await readState()
-  return writeState({
-    ...state,
-    history: state.history.filter((h) => h.id !== id),
+  const existing = state.history.find((h) => h.id === id)
+  const saved = await writeState(
+    {
+      ...state,
+      history: state.history.filter((h) => h.id !== id),
+    },
+    { skipAudit: true },
+  )
+  await appendAuditLog({
+    action: 'shift_delete',
+    actor,
+    details: existing
+      ? `נמחק שיבוץ ${existing.date} · ${existing.shiftType}`
+      : `נמחק שיבוץ ${id}`,
   })
+  return saved
 }

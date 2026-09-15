@@ -1,9 +1,23 @@
 import type { AppData, ShiftSchedule } from './types'
-import type { SessionUser } from './auth'
+import { loadSession, type SessionUser } from './auth'
+
+function actorHeaders(): HeadersInit {
+  const s = loadSession()
+  if (!s) return {}
+  return {
+    'x-actor-id': s.id,
+    'x-actor-name': encodeURIComponent(s.fullName),
+    'x-actor-phone': s.phone,
+  }
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
-    headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...actorHeaders(),
+      ...(init?.headers ?? {}),
+    },
     ...init,
   })
   if (!res.ok) {
@@ -52,3 +66,14 @@ export function loginRemote(phone: string): Promise<SessionUser> {
   })
 }
 
+export interface AuditLogEntry {
+  id: string
+  at: string
+  action: string
+  actor: { id: string; fullName: string; phone: string } | null
+  details: string
+}
+
+export function fetchAuditLogs(limit = 150): Promise<AuditLogEntry[]> {
+  return request<AuditLogEntry[]>(`/api/audit?limit=${limit}`)
+}

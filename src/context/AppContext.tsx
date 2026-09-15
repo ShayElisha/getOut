@@ -315,7 +315,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!d) return d
       const activeLanes = data.lanes.filter((l) => d.activeLaneIds.includes(l.id))
       const present = data.workers.filter((w) => d.presentWorkerIds.includes(w.id))
-      const result = runAssignmentAlgorithm(activeLanes, present, data.history, data.lanes)
+      const result = runAssignmentAlgorithm(
+        activeLanes,
+        present,
+        data.history,
+        data.lanes,
+        { date: d.date, shiftType: d.shiftType },
+      )
       return {
         ...d,
         assignments: padAssignments(result.assignments, data.lanes, d.activeLaneIds),
@@ -407,6 +413,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const saveCurrentShift = useCallback(async () => {
     if (!draft) return
+    const assignedIds = new Set(
+      draft.assignments.flatMap((a) => a.workerIds.filter(Boolean)),
+    )
+    const unassigned = draft.presentWorkerIds.filter((id) => !assignedIds.has(id))
+    if (unassigned.length > 0) {
+      const message = `לא ניתן לשמור — נשארו ${unassigned.length} בודקים שלא שובצו לעמדה`
+      setError(message)
+      throw new Error(message)
+    }
     const schedule = toSchedule(draft)
     setSyncing(true)
     setError(null)

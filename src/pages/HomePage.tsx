@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock, Play, Users, LayoutGrid, History } from 'lucide-react'
+import { ArrowLeft, Clock, Play, Users, LayoutGrid, History, Table2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { SHIFT_TYPE_LABELS } from '../constants'
 
@@ -21,7 +21,7 @@ export function HomePage() {
         <div className="relative max-w-xl">
           <h2 className="font-display text-xl font-bold sm:text-3xl">מוכנים למשמרת?</h2>
           <p className="mt-1.5 text-xs leading-relaxed text-white/80 sm:mt-2 sm:text-base">
-            בחרו נתיבים, סמנו נוכחות, והפעילו שיבוץ אוטומטי חכם לפי הסמכות, עצימות ועומס היסטורי.
+            בחרו נתיבים, סמנו נוכחות, והפעילו שיבוץ אוטומטי לפי הסמכות, היסטוריית תאריכים, רוטציית נתיבים וויסות עמדות קשות.
           </p>
           <button
             type="button"
@@ -35,7 +35,7 @@ export function HomePage() {
         </div>
       </section>
 
-      <section className="grid gap-3 sm:grid-cols-3 sm:gap-4">
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
         {[
           {
             icon: Users,
@@ -50,6 +50,13 @@ export function HomePage() {
             value: String(data.lanes.length),
             sub: 'תקן והסמכות',
             onClick: () => setView('lanes'),
+          },
+          {
+            icon: Table2,
+            label: 'מעקב עמדות',
+            value: String(data.history.length),
+            sub: 'טבלת בודק × נתיב',
+            onClick: () => setView('tracking'),
           },
           {
             icon: History,
