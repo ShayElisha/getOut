@@ -1,4 +1,5 @@
 import type { AppData, ShiftSchedule } from './types'
+import type { SessionUser } from './auth'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -6,8 +7,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(body || `API error ${res.status}`)
+    let message = `API error ${res.status}`
+    try {
+      const body = (await res.json()) as { error?: string }
+      if (body?.error) message = body.error
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message)
   }
   return res.json() as Promise<T>
 }
@@ -36,4 +43,11 @@ export function saveShiftRemote(schedule: ShiftSchedule): Promise<AppData> {
 
 export function deleteShiftRemote(id: string): Promise<AppData> {
   return request<AppData>(`/api/shifts/${id}`, { method: 'DELETE' })
+}
+
+export function loginRemote(phone: string): Promise<SessionUser> {
+  return request<SessionUser>('/api/login', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  })
 }

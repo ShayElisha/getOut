@@ -8,6 +8,8 @@ export interface Worker {
   phone: string
   certifications: string[]
   status: WorkerStatus
+  /** Can log in to the system with phone (no OTP for now) */
+  isManager: boolean
 }
 
 export interface Lane {

@@ -13,11 +13,18 @@ import { runAssignmentAlgorithm } from '../algorithm'
 import {
   deleteShiftRemote,
   fetchAppData,
+  loginRemote,
   saveAppDataRemote,
   saveShiftRemote,
   seedAppDataRemote,
 } from '../api'
-import { createSeedData } from '../storage'
+import {
+  clearSession,
+  loadSession,
+  saveSession,
+  type SessionUser,
+} from '../auth'
+import { createSeedData, isDefaultManager } from '../storage'
 import type {
   AppData,
   Lane,
@@ -46,6 +53,9 @@ interface AppContextValue {
   loading: boolean
   syncing: boolean
   error: string | null
+  user: SessionUser | null
+  login: (phone: string) => Promise<void>
+  logout: () => void
   view: View
   setView: (v: View) => void
   shiftStep: ShiftStep
@@ -60,6 +70,7 @@ interface AppContextValue {
   runAutoAssign: () => void
   updateAssignment: (laneId: string, slotIndex: number, workerId: string | null) => void
   addExtraWorkerToLane: (laneId: string, workerId: string) => void
+  addSlotToLane: (laneId: string) => void
   saveCurrentShift: () => Promise<void>
   loadShiftFromHistory: (id: string) => void
   deleteHistoryItem: (id: string) => Promise<void>
@@ -125,6 +136,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [user, setUser] = useState<SessionUser | null>(() => loadSession())
   const [view, setView] = useState<View>('home')
   const [shiftStep, setShiftStep] = useState<ShiftStep>('lanes')
   const [draft, setDraft] = useState<ShiftDraft | null>(null)
@@ -176,17 +188,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setError(null)
     try {
       const remote = await fetchAppData()
+      // Ensure שי אלישע keeps manager flag if missing in old records
+      const workers = remote.workers.map((w) => ({
+        ...w,
+        isManager: Boolean(w.isManager) || isDefaultManager(w),
+      }))
       skipNextSync.current = true
-      setData(remote)
+      setData({ ...remote, workers })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'לא ניתן להתחבר לשרת')
-      // fallback empty seed locally if API down — still show UI
       if (dataRef.current.workers.length === 0) {
         setData(createSeedData())
       }
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  const login = useCallback(async (phone: string) => {
+    const session = await loginRemote(phone)
+    saveSession(session)
+    setUser(session)
+    setView('home')
+  }, [])
+
+  const logout = useCallback(() => {
+    clearSession()
+    setUser(null)
+    setDraft(null)
+    setView('home')
   }, [])
 
   useEffect(() => {
@@ -359,6 +389,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [data.lanes],
   )
 
+  const addSlotToLane = useCallback(
+    (laneId: string) => {
+      setDraft((d) => {
+        if (!d) return d
+        const padded = padAssignments(d.assignments, data.lanes, d.activeLaneIds).map(
+          (a) => ({ ...a, workerIds: [...a.workerIds] }),
+        )
+        const target = padded.find((a) => a.laneId === laneId)
+        if (!target) return d
+        target.workerIds.push('')
+        return { ...d, assignments: padded }
+      })
+    },
+    [data.lanes],
+  )
+
   const saveCurrentShift = useCallback(async () => {
     if (!draft) return
     const schedule = toSchedule(draft)
@@ -412,7 +458,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addWorker = useCallback(
     (w: Omit<Worker, 'id'>) => {
-      patchData((prev) => ({ ...prev, workers: [...prev.workers, { ...w, id: uuid() }] }))
+      patchData((prev) => ({
+        ...prev,
+        workers: [
+          ...prev.workers,
+          { ...w, id: uuid(), isManager: Boolean(w.isManager) },
+        ],
+      }))
     },
     [patchData],
   )
@@ -510,6 +562,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loading,
       syncing,
       error,
+      user,
+      login,
+      logout,
       view,
       setView,
       shiftStep,
@@ -524,6 +579,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       runAutoAssign,
       updateAssignment,
       addExtraWorkerToLane,
+      addSlotToLane,
       saveCurrentShift,
       loadShiftFromHistory,
       deleteHistoryItem,
@@ -543,6 +599,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       loading,
       syncing,
       error,
+      user,
+      login,
+      logout,
       view,
       shiftStep,
       draft,
@@ -555,6 +614,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       runAutoAssign,
       updateAssignment,
       addExtraWorkerToLane,
+      addSlotToLane,
       saveCurrentShift,
       loadShiftFromHistory,
       deleteHistoryItem,

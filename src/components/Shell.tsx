@@ -6,6 +6,7 @@ import {
   Settings2,
   Users,
   BadgeCheck,
+  LogOut,
 } from 'lucide-react'
 import type { View } from '../types'
 import { useApp } from '../context/AppContext'
@@ -20,8 +21,18 @@ const NAV: { id: View; label: string; icon: typeof Home }[] = [
 ]
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { view, setView, startShift, draft, loading, syncing, error, refreshFromServer } =
-    useApp()
+  const {
+    view,
+    setView,
+    startShift,
+    draft,
+    loading,
+    syncing,
+    error,
+    refreshFromServer,
+    user,
+    logout,
+  } = useApp()
 
   const go = (id: View) => {
     if (id === 'shift' && !draft) {
@@ -43,9 +54,24 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </h1>
           <p className="mt-1 text-sm text-ink-soft">ניהול ושיבוץ עמדות שער יציאה</p>
         </div>
-        <div className="hidden items-center gap-2 rounded-full border border-line bg-card/80 px-3 py-1.5 text-xs text-ink-soft backdrop-blur lg:flex">
-          <Settings2 className="size-3.5" />
-          {loading ? 'מתחבר ל-MongoDB…' : syncing ? 'שומר ל-MongoDB…' : 'מחובר ל-MongoDB'}
+        <div className="flex flex-wrap items-center gap-2">
+          {user && (
+            <div className="flex items-center gap-2 rounded-full border border-line bg-card/80 px-3 py-1.5 text-xs text-ink-soft backdrop-blur">
+              <span className="font-semibold text-ink">{user.fullName}</span>
+              <button
+                type="button"
+                onClick={logout}
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-brand hover:bg-surface"
+              >
+                <LogOut className="size-3.5" />
+                יציאה
+              </button>
+            </div>
+          )}
+          <div className="hidden items-center gap-2 rounded-full border border-line bg-card/80 px-3 py-1.5 text-xs text-ink-soft backdrop-blur lg:flex">
+            <Settings2 className="size-3.5" />
+            {loading ? 'מתחבר ל-MongoDB…' : syncing ? 'שומר ל-MongoDB…' : 'מחובר ל-MongoDB'}
+          </div>
         </div>
       </header>
 

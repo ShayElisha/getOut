@@ -3,7 +3,7 @@ import { DEFAULT_CERTIFICATIONS } from './constants'
 import type { AppData, Lane, Worker } from './types'
 
 /** Real gate roster — phones normalized without dashes */
-export const WORKER_ROSTER: { fullName: string; phone: string }[] = [
+export const WORKER_ROSTER: { fullName: string; phone: string; isManager?: boolean }[] = [
   { fullName: 'אביב חי טפלשוילי', phone: '0508676524' },
   { fullName: 'אבירן אברהם דסה', phone: '0539633063' },
   { fullName: 'אדיר דאי', phone: '0528885977' },
@@ -24,9 +24,17 @@ export const WORKER_ROSTER: { fullName: string; phone: string }[] = [
   { fullName: 'קריסטינה שקיראק', phone: '0526442431' },
   { fullName: 'רונית בכר', phone: '0535586417' },
   { fullName: "שחר צ'קול", phone: '0507433706' },
-  { fullName: 'שי אלישע', phone: '0537171884' },
+  { fullName: 'שי אלישע', phone: '0537171884', isManager: true },
   { fullName: 'שיראל טגבה', phone: '0533200457' },
 ]
+
+export function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '')
+}
+
+export function isDefaultManager(w: { fullName: string; phone: string }): boolean {
+  return w.fullName === 'שי אלישע' || normalizePhone(w.phone) === '0537171884'
+}
 
 function seedWorkers(): Worker[] {
   return WORKER_ROSTER.map((w) => ({
@@ -35,6 +43,7 @@ function seedWorkers(): Worker[] {
     phone: w.phone,
     certifications: [],
     status: 'active' as const,
+    isManager: Boolean(w.isManager) || isDefaultManager(w),
   }))
 }
 

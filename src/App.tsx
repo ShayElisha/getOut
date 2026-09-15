@@ -6,6 +6,7 @@ import { WorkersPage } from './pages/WorkersPage'
 import { LanesPage } from './pages/LanesPage'
 import { CertsPage } from './pages/CertsPage'
 import { HistoryPage } from './pages/HistoryPage'
+import { LoginPage } from './pages/LoginPage'
 
 function Router() {
   const { view } = useApp()
@@ -25,12 +26,27 @@ function Router() {
   }
 }
 
+function Gate() {
+  const { user, loading } = useApp()
+  if (!user) return <LoginPage />
+  if (loading) {
+    return (
+      <div className="flex min-h-dvh items-center justify-center text-ink-soft">
+        טוען נתונים מ-MongoDB…
+      </div>
+    )
+  }
+  return (
+    <Shell>
+      <Router />
+    </Shell>
+  )
+}
+
 export default function App() {
   return (
     <AppProvider>
-      <Shell>
-        <Router />
-      </Shell>
+      <Gate />
     </AppProvider>
   )
 }

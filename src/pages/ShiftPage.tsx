@@ -9,6 +9,7 @@ import {
   UserPlus,
   X,
   Save,
+  Plus,
 } from 'lucide-react'
 import { isQualified } from '../algorithm'
 import { useApp } from '../context/AppContext'
@@ -39,6 +40,7 @@ export function ShiftPage() {
     runAutoAssign,
     updateAssignment,
     addExtraWorkerToLane,
+    addSlotToLane,
     saveCurrentShift,
     startShift,
   } = useApp()
@@ -453,7 +455,18 @@ export function ShiftPage() {
                 return (
                   <div key={laneId} className="p-4">
                     <div className="mb-3 flex items-center justify-between gap-2">
-                      <h4 className="font-bold text-[#0f1c2e]">{lane.name}</h4>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <h4 className="font-bold text-[#0f1c2e]">{lane.name}</h4>
+                        <button
+                          type="button"
+                          onClick={() => addSlotToLane(laneId)}
+                          className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg border border-[#d5dee8] bg-[#f3f6f9] text-[#1a4a6e] transition hover:border-[#1a4a6e] hover:bg-[#1a4a6e] hover:text-white"
+                          title="הוסף בודק לנתיב"
+                          aria-label={`הוסף בודק ל${lane.name}`}
+                        >
+                          <Plus className="size-4" />
+                        </button>
+                      </div>
                       <div className="flex items-center gap-2">
                         {slots.filter(Boolean).length > lane.staffingStandard && (
                           <span className="rounded-md bg-[#f3e0d4] px-2 py-0.5 text-[10px] font-bold text-[#c45c26]">
