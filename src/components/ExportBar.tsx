@@ -54,27 +54,31 @@ export function ExportBar({ date, shiftType, lines, unassigned }: ExportBarProps
 
   return (
     <div className="flex flex-col items-stretch gap-2 sm:items-end">
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2 sm:gap-3">
         <button
           type="button"
           disabled={busy}
           onClick={handleDownload}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-deep disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
         >
-          {busy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+          {busy ? (
+            <Loader2 className="size-3.5 animate-spin sm:size-4" />
+          ) : (
+            <Download className="size-3.5 sm:size-4" />
+          )}
           ייצוא תמונה
         </button>
         <button
           type="button"
           disabled={busy}
           onClick={handleWhatsApp}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#1ebe57] disabled:opacity-60"
+          className="inline-flex items-center gap-1.5 rounded-xl bg-[#25D366] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1ebe57] disabled:opacity-60 sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
         >
-          <MessageCircle className="size-4" />
+          <MessageCircle className="size-3.5 sm:size-4" />
           שיתוף ב-WhatsApp
         </button>
       </div>
-      {error && <p className="text-xs font-medium text-hard">{error}</p>}
+      {error && <p className="text-[11px] font-medium text-hard sm:text-xs">{error}</p>}
     </div>
   )
 }
