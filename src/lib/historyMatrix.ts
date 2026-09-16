@@ -44,7 +44,8 @@ function columnKey(date: string, shiftType: ShiftType, shiftId: string): string 
 
 /**
  * Build worker × (date+shift) matrix with lane placements.
- * Newest dates first; within a day morning → afternoon → night.
+ * Columns ordered oldest→newest so in RTL they run right→left.
+ * Within a day: morning → afternoon → night.
  */
 export function buildHistoryMatrix(
   workers: Worker[],
@@ -68,7 +69,7 @@ export function buildHistoryMatrix(
   }
 
   const shifts = [...bySlot.values()].sort((a, b) => {
-    if (a.date !== b.date) return b.date.localeCompare(a.date)
+    if (a.date !== b.date) return a.date.localeCompare(b.date)
     return SHIFT_ORDER[a.shiftType] - SHIFT_ORDER[b.shiftType]
   })
 

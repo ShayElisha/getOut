@@ -13,6 +13,7 @@ import {
   MoreHorizontal,
   X,
   BarChart3,
+  CalendarDays,
 } from 'lucide-react'
 import type { View } from '../types'
 import { useApp } from '../context/AppContext'
@@ -28,10 +29,11 @@ const NAV: { id: View; label: string; icon: typeof Home }[] = [
   { id: 'analytics', label: 'אנליזה', icon: BarChart3 },
   { id: 'audit', label: 'יומן', icon: ScrollText },
   { id: 'history', label: 'היסטוריה', icon: History },
+  { id: 'historyMatrix', label: 'לוח שיבוצים', icon: CalendarDays },
 ]
 
 const MOBILE_PRIMARY: View[] = ['home', 'shift', 'workers', 'history']
-const MOBILE_MORE: View[] = ['lanes', 'certs', 'tracking', 'analytics', 'audit']
+const MOBILE_MORE: View[] = ['lanes', 'certs', 'tracking', 'analytics', 'audit', 'historyMatrix']
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const {
