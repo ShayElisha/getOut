@@ -143,12 +143,7 @@ export function requestPasswordResetRemote(
 
 export function resendManagerTempPasswordRemote(
   workerId: string,
-): Promise<{
-  ok: boolean
-  sentTo?: string
-  tempPassword?: string
-  messageId?: string | null
-}> {
+): Promise<{ ok: boolean }> {
   return request('/api/resend-temp-password', {
     method: 'POST',
     body: JSON.stringify({ workerId }),

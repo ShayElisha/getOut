@@ -65,16 +65,13 @@ export async function sendMail({ to, subject, text, html, attachments }) {
     throw err
   }
 
-  const from = String(
+  const from =
     process.env.SMTP_FROM ||
-      `${appDisplayName()} <${smtpUser()}>`,
-  )
-    .trim()
-    .replace(/^["']|["']$/g, '')
+    `${appDisplayName()} <${process.env.SMTP_USER}>`
 
   const transporter = createTransport()
   try {
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from,
       to,
       subject,
@@ -82,24 +79,8 @@ export async function sendMail({ to, subject, text, html, attachments }) {
       html: html || undefined,
       attachments: attachments?.length ? attachments : undefined,
     })
-    if (info.rejected?.length) {
-      const e = new Error(`המייל נדחה עבור: ${info.rejected.join(', ')}`)
-      e.status = 502
-      throw e
-    }
-    if (!info.accepted?.length) {
-      const e = new Error('השרת לא אישר את נמען המייל')
-      e.status = 502
-      throw e
-    }
-    return {
-      queued: true,
-      devLogged: false,
-      messageId: info.messageId || null,
-      accepted: info.accepted,
-    }
+    return { queued: true, devLogged: false }
   } catch (err) {
-    if (err?.status) throw err
     const detail = err instanceof Error ? err.message : String(err)
     console.error('[mail] send failed', detail)
     const e = new Error(

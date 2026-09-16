@@ -584,7 +584,7 @@ export async function resendManagerTempPassword(workerId, actor) {
   }
 
   const tempPassword = generateTempPassword()
-  const mailResult = await sendTempPasswordEmail({
+  await sendTempPasswordEmail({
     to: manager.email,
     fullName: manager.fullName,
     tempPassword,
@@ -609,14 +609,7 @@ export async function resendManagerTempPassword(workerId, actor) {
     actor: actor || null,
     details: `סיסמה זמנית נשלחה מחדש אל ${manager.fullName} (${manager.email})`,
   })
-  // Return temp password to the authenticated admin so login can proceed
-  // even if the message lands in spam / is delayed.
-  return {
-    ok: true,
-    sentTo: manager.email,
-    tempPassword,
-    messageId: mailResult?.messageId || null,
-  }
+  return { ok: true }
 }
 
 export async function upsertShift(id, body, actor, options = {}) {
