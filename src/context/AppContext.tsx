@@ -17,6 +17,8 @@ import {
   deleteShiftRemote,
   fetchAppData,
   loginRemote,
+  requestPasswordResetRemote,
+  resendManagerTempPasswordRemote,
   saveAppDataRemote,
   saveShiftRemote,
   seedAppDataRemote,
@@ -72,10 +74,14 @@ interface AppContextValue {
   login: (
     phone: string,
     password: string,
-    passwordConfirm?: string,
-  ) => Promise<void>
-  /** Phone-only probe: whether the manager must set a password or just sign in. */
-  checkLogin: (phone: string) => Promise<'setup' | 'login'>
+    opts?: { newPassword?: string; newPasswordConfirm?: string },
+  ) => Promise<'change_password' | void>
+  /** Phone-only probe: which login UI to show next. */
+  checkLogin: (
+    phone: string,
+  ) => Promise<'login' | 'change_password' | 'await_email'>
+  requestPasswordReset: (phone: string) => Promise<string>
+  resendManagerTempPassword: (workerId: string) => Promise<void>
   logout: () => void
   view: View
   setView: (v: View) => void
@@ -372,22 +378,44 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const checkLogin = useCallback(async (phone: string) => {
     const result = await checkLoginRemote(phone)
-    if (result.next !== 'setup' && result.next !== 'login') {
+    if (
+      result.next !== 'login' &&
+      result.next !== 'change_password' &&
+      result.next !== 'await_email'
+    ) {
       throw new Error('תגובת התחברות לא תקינה')
     }
     return result.next
   }, [])
 
   const login = useCallback(
-    async (phone: string, password: string, passwordConfirm?: string) => {
-      const session = await loginRemote(phone, password, passwordConfirm)
-      if (!session.token) throw new Error('לא התקבל טוקן התחברות')
+    async (
+      phone: string,
+      password: string,
+      opts?: { newPassword?: string; newPasswordConfirm?: string },
+    ) => {
+      const session = await loginRemote(phone, password, opts)
+      if ('next' in session && session.next === 'change_password') {
+        return 'change_password'
+      }
+      if (!('token' in session) || !session.token) {
+        throw new Error('לא התקבל טוקן התחברות')
+      }
       saveSession(session)
       setUser(session)
       navigate('/', { replace: true })
     },
     [navigate],
   )
+
+  const requestPasswordReset = useCallback(async (phone: string) => {
+    const result = await requestPasswordResetRemote(phone)
+    return result.message || 'אם המספר רשום, נשלח מייל עם סיסמה זמנית.'
+  }, [])
+
+  const resendManagerTempPassword = useCallback(async (workerId: string) => {
+    await resendManagerTempPasswordRemote(workerId)
+  }, [])
 
   const logout = useCallback(() => {
     clearSession()
@@ -859,6 +887,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       user,
       login,
       checkLogin,
+      requestPasswordReset,
+      resendManagerTempPassword,
       logout,
       view,
       setView,
@@ -901,6 +931,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       user,
       login,
       checkLogin,
+      requestPasswordReset,
+      resendManagerTempPassword,
       logout,
       view,
       setView,

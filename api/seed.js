@@ -17,6 +17,7 @@ export default async function handler(req, res) {
       await writeState(createSeedData(), {
         action: 'data_reset',
         actor,
+        skipManagerInvites: true,
         expectedRevision:
           req.body?.expectedRevision != null
             ? Number(req.body.expectedRevision)

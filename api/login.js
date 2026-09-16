@@ -18,6 +18,8 @@ export default async function handler(req, res) {
     const result = await loginByPhone(phone, {
       password: req.body?.password,
       passwordConfirm: req.body?.passwordConfirm,
+      newPassword: req.body?.newPassword,
+      newPasswordConfirm: req.body?.newPasswordConfirm,
     })
     if (result.next) {
       res.status(200).json(result)

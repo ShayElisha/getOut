@@ -10,6 +10,8 @@ const ACTION_LABELS: Record<string, string> = {
   shift_delete: 'מחיקת שיבוץ',
   data_update: 'עדכון נתונים',
   data_reset: 'איפוס נתונים',
+  manager_invite: 'שליחת סיסמה זמנית',
+  password_reset: 'איפוס סיסמה',
 }
 
 function formatWhen(iso: string): string {

@@ -6,6 +6,8 @@ export interface Worker {
   id: string
   fullName: string
   phone: string
+  /** Required when isManager — used for temp password / reset emails */
+  email?: string
   certifications: string[]
   status: WorkerStatus
   /** Can log in to the system with phone + password */

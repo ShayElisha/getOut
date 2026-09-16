@@ -8,10 +8,13 @@ import {
   loginByPhone,
   publicData,
   readState,
+  requestPasswordReset,
+  resendManagerTempPassword,
   upsertShift,
   writeState,
 } from './data.js'
 import { getDb } from './db.js'
+import { sendTestEmail } from './mail.js'
 import { assertRateLimit, clientKey } from './rateLimit.js'
 import { createSessionToken, requireUser } from './session.js'
 
@@ -23,10 +26,11 @@ app.use(express.json({ limit: '5mb' }))
 
 function sendError(res, err) {
   const status = err.status || 500
-  if (status >= 500) console.error(err)
+  if (status >= 500) console.error(err?.message || err)
   const body = { error: err.message || 'שגיאת שרת' }
   if (err.current) body.current = err.current
   if (err.retryAfterSec) body.retryAfterSec = err.retryAfterSec
+  if (err.code) body.code = err.code
   res.status(status).json(body)
 }
 
@@ -55,6 +59,8 @@ app.post('/api/login', async (req, res) => {
     const result = await loginByPhone(phone, {
       password: req.body?.password,
       passwordConfirm: req.body?.passwordConfirm,
+      newPassword: req.body?.newPassword,
+      newPasswordConfirm: req.body?.newPasswordConfirm,
     })
     if (result.next) {
       res.json(result)
@@ -62,6 +68,58 @@ app.post('/api/login', async (req, res) => {
     }
     const token = createSessionToken(result)
     res.json({ ...result, token })
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+app.post('/api/password-reset', async (req, res) => {
+  try {
+    const phone = String(req.body?.phone || '')
+    await assertRateLimit({
+      key: `reset:${clientKey(req)}:${phone.replace(/\D/g, '') || 'empty'}`,
+      limit: 5,
+      windowMs: 15 * 60_000,
+    })
+    res.json(await requestPasswordReset(phone))
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+app.post('/api/managers/resend-temp-password', async (req, res) => {
+  try {
+    const actor = requireUser(req)
+    const workerId = String(req.body?.workerId || '')
+    if (!workerId) {
+      const err = new Error('חסר מזהה עובד')
+      err.status = 400
+      throw err
+    }
+    await assertRateLimit({
+      key: `reinvite:${clientKey(req)}:${workerId}`,
+      limit: 5,
+      windowMs: 15 * 60_000,
+    })
+    res.json(await resendManagerTempPassword(workerId, actor))
+  } catch (err) {
+    sendError(res, err)
+  }
+})
+
+app.post('/api/mail/test', async (req, res) => {
+  try {
+    requireUser(req)
+    const to =
+      typeof req.body?.to === 'string' && req.body.to.trim()
+        ? req.body.to.trim()
+        : undefined
+    const result = await sendTestEmail({ to })
+    res.json({
+      ok: true,
+      queued: result.queued,
+      devLogged: result.devLogged,
+    })
   } catch (err) {
     sendError(res, err)
   }
@@ -108,6 +166,7 @@ app.post('/api/seed', async (req, res) => {
       await writeState(createSeedData(), {
         action: 'data_reset',
         actor,
+        skipManagerInvites: true,
         expectedRevision:
           req.body?.expectedRevision != null
             ? Number(req.body.expectedRevision)

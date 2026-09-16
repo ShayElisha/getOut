@@ -41,6 +41,7 @@ function seedWorkers(): Worker[] {
     id: uuid(),
     fullName: w.fullName,
     phone: w.phone,
+    email: '',
     certifications: [],
     status: 'active' as const,
     isManager: Boolean(w.isManager) || isDefaultManager(w),

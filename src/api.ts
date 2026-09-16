@@ -89,29 +89,64 @@ export function deleteShiftRemote(
   return request<AppData>(`/api/shifts/${id}${q}`, { method: 'DELETE' })
 }
 
-export type LoginNextStep = 'setup' | 'login'
+export type LoginNextStep =
+  | 'login'
+  | 'change_password'
+  | 'await_email'
 
 export function checkLoginRemote(
   phone: string,
-): Promise<{ next: LoginNextStep; phone: string }> {
-  return request<{ next: LoginNextStep; phone: string }>('/api/login', {
-    method: 'POST',
-    body: JSON.stringify({ phone }),
-  })
+): Promise<{ next: LoginNextStep; phone: string; message?: string }> {
+  return request<{ next: LoginNextStep; phone: string; message?: string }>(
+    '/api/login',
+    {
+      method: 'POST',
+      body: JSON.stringify({ phone }),
+    },
+  )
 }
 
 export function loginRemote(
   phone: string,
   password: string,
-  passwordConfirm?: string,
-): Promise<SessionUser & { token: string }> {
-  return request<SessionUser & { token: string }>('/api/login', {
+  opts?: {
+    newPassword?: string
+    newPasswordConfirm?: string
+  },
+): Promise<
+  | (SessionUser & { token: string })
+  | { next: LoginNextStep; phone: string; message?: string }
+> {
+  return request('/api/login', {
     method: 'POST',
     body: JSON.stringify({
       phone,
       password,
-      ...(passwordConfirm !== undefined ? { passwordConfirm } : {}),
+      ...(opts?.newPassword !== undefined
+        ? {
+            newPassword: opts.newPassword,
+            newPasswordConfirm: opts.newPasswordConfirm,
+          }
+        : {}),
     }),
+  })
+}
+
+export function requestPasswordResetRemote(
+  phone: string,
+): Promise<{ ok: boolean; message: string }> {
+  return request('/api/password-reset', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  })
+}
+
+export function resendManagerTempPasswordRemote(
+  workerId: string,
+): Promise<{ ok: boolean }> {
+  return request('/api/managers/resend-temp-password', {
+    method: 'POST',
+    body: JSON.stringify({ workerId }),
   })
 }
 
