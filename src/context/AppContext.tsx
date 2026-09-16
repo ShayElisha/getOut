@@ -21,16 +21,20 @@ import {
   seedAppDataRemote,
 } from '../api'
 import {
+  clearAppDataCache,
   clearDraftStorage,
   clearSession,
+  loadAppDataCache,
   loadDraftJson,
   loadSession,
   loadShiftStep,
+  saveAppDataCache,
   saveDraftJson,
   saveSession,
   saveShiftStep,
   type SessionUser,
 } from '../auth'
+import { getCurrentShiftContext } from '../constants'
 import { pathForView, viewFromPath } from '../routes'
 import { createSeedData, isDefaultManager } from '../storage'
 import type {
@@ -59,6 +63,8 @@ export interface ShiftDraft {
 interface AppContextValue {
   data: AppData
   loading: boolean
+  /** Background refresh while showing cached data */
+  refreshing: boolean
   syncing: boolean
   error: string | null
   user: SessionUser | null
@@ -110,10 +116,7 @@ function todayISO(): string {
 }
 
 function defaultShiftType(): ShiftType {
-  const h = new Date().getHours()
-  if (h < 14) return 'morning'
-  if (h < 22) return 'afternoon'
-  return 'night'
+  return getCurrentShiftContext().shiftType
 }
 
 function padAssignments(
@@ -161,8 +164,10 @@ function restoreStep(): ShiftStep {
 export function AppProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const [data, setData] = useState<AppData>(emptyData)
-  const [loading, setLoading] = useState(true)
+  const initialCache = useMemo(() => loadAppDataCache(), [])
+  const [data, setData] = useState<AppData>(() => initialCache ?? emptyData)
+  const [loading, setLoading] = useState(() => !initialCache)
+  const [refreshing, setRefreshing] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<SessionUser | null>(() => loadSession())
@@ -176,6 +181,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const skipNextSync = useRef(true)
   const userRef = useRef(user)
   userRef.current = user
+
+  const applyRemoteData = useCallback((remote: AppData) => {
+    const workers = remote.workers.map((w) => ({
+      ...w,
+      isManager: Boolean(w.isManager) || isDefaultManager(w),
+    }))
+    const next = { ...remote, workers }
+    skipNextSync.current = true
+    setData(next)
+    saveAppDataCache(next)
+    return next
+  }, [])
 
   const setView = useCallback(
     (v: View) => {
@@ -200,9 +217,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handleAuthFailure = useCallback(() => {
     clearSession()
+    clearAppDataCache()
     setUser(null)
     setDraft(null)
     clearDraftStorage()
+    setData(emptyData)
     navigate('/login', { replace: true })
   }, [navigate])
 
@@ -211,7 +230,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setError(null)
     try {
       const saved = await saveAppDataRemote(next)
+      skipNextSync.current = true
       setData(saved)
+      saveAppDataCache(saved)
       return saved
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -220,6 +241,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (e instanceof ApiError && e.status === 409 && e.current) {
         skipNextSync.current = true
         setData(e.current)
+        saveAppDataCache(e.current)
       }
       const msg = e instanceof Error ? e.message : 'שגיאת שמירה לשרת'
       setError(msg)
@@ -253,18 +275,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const refreshFromServer = useCallback(async () => {
     if (!userRef.current?.token) {
       setLoading(false)
+      setRefreshing(false)
       return
     }
-    setLoading(true)
+    const hasLocal =
+      dataRef.current.workers.length > 0 || dataRef.current.lanes.length > 0
+    if (hasLocal) setRefreshing(true)
+    else setLoading(true)
     setError(null)
     try {
       const remote = await fetchAppData()
-      const workers = remote.workers.map((w) => ({
-        ...w,
-        isManager: Boolean(w.isManager) || isDefaultManager(w),
-      }))
-      skipNextSync.current = true
-      setData({ ...remote, workers })
+      applyRemoteData(remote)
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         handleAuthFailure()
@@ -276,8 +297,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
-  }, [handleAuthFailure])
+  }, [handleAuthFailure, applyRemoteData])
 
   const login = useCallback(
     async (phone: string) => {
@@ -292,6 +314,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => {
     clearSession()
+    clearAppDataCache()
     clearDraftStorage()
     setUser(null)
     setDraft(null)
@@ -302,6 +325,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user?.token) {
       setLoading(false)
+      setRefreshing(false)
       return
     }
     void refreshFromServer()
@@ -545,11 +569,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const saved = await saveShiftRemote(schedule, data.revision ?? 0)
       skipNextSync.current = true
       setData(saved)
+      saveAppDataCache(saved)
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) handleAuthFailure()
       if (e instanceof ApiError && e.status === 409 && e.current) {
         skipNextSync.current = true
         setData(e.current)
+        saveAppDataCache(e.current)
       }
       setError(e instanceof Error ? e.message : 'שמירת השיבוץ נכשלה')
       throw e
@@ -571,11 +597,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const saved = await deleteShiftRemote(id, dataRef.current.revision ?? 0)
       skipNextSync.current = true
       setData(saved)
+      saveAppDataCache(saved)
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) handleAuthFailure()
       if (e instanceof ApiError && e.status === 409 && e.current) {
         skipNextSync.current = true
         setData(e.current)
+        saveAppDataCache(e.current)
       }
       setError(e instanceof Error ? e.message : 'מחיקה נכשלה')
     } finally {
@@ -674,6 +702,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const seeded = await seedAppDataRemote(dataRef.current.revision ?? 0)
       skipNextSync.current = true
       setData(seeded)
+      saveAppDataCache(seeded)
       setDraft(null)
       clearDraftStorage()
       setView('home')
@@ -682,6 +711,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (e instanceof ApiError && e.status === 409 && e.current) {
         skipNextSync.current = true
         setData(e.current)
+        saveAppDataCache(e.current)
       }
       setError(e instanceof Error ? e.message : 'איפוס נכשל')
     } finally {
@@ -693,6 +723,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       data,
       loading,
+      refreshing,
       syncing,
       error,
       user,
@@ -730,6 +761,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       data,
       loading,
+      refreshing,
       syncing,
       error,
       user,

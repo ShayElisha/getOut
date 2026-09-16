@@ -12,9 +12,15 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { SHIFT_TYPE_LABELS } from '../constants'
+import {
+  getCurrentShiftContext,
+  INTENSITY_LABELS,
+  SHIFT_TYPE_LABELS,
+} from '../constants'
 import { fetchAuditLogs } from '../api'
 import { downloadBoardImage, type ExportLaneLine } from '../lib/export'
+import { IntensityBadge, SectionCard } from '../components/ui'
+import type { ShiftSchedule } from '../types'
 
 export function HomePage() {
   const {
@@ -31,6 +37,62 @@ export function HomePage() {
   const [savedBy, setSavedBy] = useState<string | null>(null)
   const [exportBusy, setExportBusy] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [nowTick, setNowTick] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 60_000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  const currentCtx = useMemo(
+    () => getCurrentShiftContext(new Date(nowTick)),
+    [nowTick],
+  )
+
+  const currentShift: ShiftSchedule | null = useMemo(() => {
+    const matches = data.history.filter(
+      (h) => h.date === currentCtx.date && h.shiftType === currentCtx.shiftType,
+    )
+    if (matches.length === 0) return null
+    return matches.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0]
+  }, [data.history, currentCtx.date, currentCtx.shiftType])
+
+  const currentTableRows = useMemo(() => {
+    if (!currentShift) return []
+    return currentShift.activeLaneIds
+      .map((laneId) => {
+        const lane = data.lanes.find((l) => l.id === laneId)
+        if (!lane) return null
+        const assignment = currentShift.assignments.find((a) => a.laneId === laneId)
+        const workers = (assignment?.workerIds ?? [])
+          .filter(Boolean)
+          .map((id) => data.workers.find((w) => w.id === id)?.fullName ?? id)
+        return {
+          laneId,
+          laneName: lane.name,
+          intensity: lane.intensity,
+          staffingStandard: lane.staffingStandard,
+          workers,
+        }
+      })
+      .filter(Boolean) as {
+      laneId: string
+      laneName: string
+      intensity: 'easy' | 'medium' | 'hard'
+      staffingStandard: number
+      workers: string[]
+    }[]
+  }, [currentShift, data.lanes, data.workers])
+
+  const currentUnassigned = useMemo(() => {
+    if (!currentShift) return []
+    const assigned = new Set(
+      currentShift.assignments.flatMap((a) => a.workerIds.filter(Boolean)),
+    )
+    return currentShift.presentWorkerIds
+      .filter((id) => !assigned.has(id))
+      .map((id) => data.workers.find((w) => w.id === id)?.fullName ?? id)
+  }, [currentShift, data.workers])
 
   const resumeShift = () => {
     if (!draft) return
@@ -85,23 +147,40 @@ export function HomePage() {
       return
     }
     let cancelled = false
-    void (async () => {
-      try {
-        const logs = await fetchAuditLogs(80)
-        if (cancelled) return
-        const match = logs.find(
-          (l) =>
-            (l.action === 'shift_save' || l.action === 'shift_update') &&
-            l.details.includes(last.date) &&
-            l.details.includes(last.shiftType),
-        )
-        setSavedBy(match?.actor?.fullName || null)
-      } catch {
-        if (!cancelled) setSavedBy(null)
-      }
-    })()
+    let idleId: number | undefined
+    let timeoutId: number | undefined
+
+    const run = () => {
+      void (async () => {
+        try {
+          const logs = await fetchAuditLogs(80)
+          if (cancelled) return
+          const match = logs.find(
+            (l) =>
+              (l.action === 'shift_save' || l.action === 'shift_update') &&
+              l.details.includes(last.date) &&
+              l.details.includes(last.shiftType),
+          )
+          setSavedBy(match?.actor?.fullName || null)
+        } catch {
+          if (!cancelled) setSavedBy(null)
+        }
+      })()
+    }
+
+    const ric = window.requestIdleCallback
+    if (typeof ric === 'function') {
+      idleId = ric(run, { timeout: 2500 })
+    } else {
+      timeoutId = window.setTimeout(run, 800)
+    }
+
     return () => {
       cancelled = true
+      if (idleId !== undefined && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId)
+      }
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
   }, [last])
 
@@ -148,6 +227,14 @@ export function HomePage() {
       setExportBusy(false)
     }
   }
+
+  const currentDateLabel = new Date(
+    currentCtx.date + 'T12:00:00',
+  ).toLocaleDateString('he-IL', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  })
 
   return (
     <div className="space-y-5 sm:space-y-8">
@@ -226,6 +313,73 @@ export function HomePage() {
           )}
         </div>
       </section>
+
+      <SectionCard
+        title={`משמרת נוכחית · ${SHIFT_TYPE_LABELS[currentCtx.shiftType]}`}
+        subtitle={`${currentDateLabel} · ${currentCtx.windowLabel}`}
+        actions={
+          currentShift ? (
+            <button
+              type="button"
+              onClick={() => loadShiftFromHistory(currentShift.id)}
+              className="rounded-xl border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-brand hover:bg-card sm:text-sm"
+            >
+              פתיחה לעריכה
+            </button>
+          ) : undefined
+        }
+      >
+        {!currentShift ? (
+          <p className="text-sm text-ink-soft">
+            אין שיבוץ שמור למשמרת {SHIFT_TYPE_LABELS[currentCtx.shiftType]} בחלון
+            הזמן הנוכחי ({currentCtx.windowLabel}).
+          </p>
+        ) : (
+          <>
+            <div className="overflow-x-auto rounded-xl border border-line">
+              <table className="min-w-full border-collapse text-right text-[11px] sm:text-xs">
+                <thead>
+                  <tr className="bg-brand-deep text-white">
+                    <th className="px-2.5 py-2.5 font-semibold sm:px-3">נתיב</th>
+                    <th className="px-2.5 py-2.5 font-semibold sm:px-3">עצימות</th>
+                    <th className="px-2.5 py-2.5 font-semibold sm:px-3">תקן</th>
+                    <th className="px-2.5 py-2.5 font-semibold sm:px-3">בודקים משובצים</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentTableRows.map((row, i) => (
+                    <tr
+                      key={row.laneId}
+                      className={i % 2 === 0 ? 'bg-card' : 'bg-surface'}
+                    >
+                      <td className="border-b border-line px-2.5 py-2 font-semibold text-ink sm:px-3">
+                        {row.laneName}
+                      </td>
+                      <td className="border-b border-line px-2.5 py-2 sm:px-3">
+                        <IntensityBadge intensity={row.intensity} />
+                        <span className="sr-only">{INTENSITY_LABELS[row.intensity]}</span>
+                      </td>
+                      <td className="border-b border-line px-2.5 py-2 tabular-nums text-ink-soft sm:px-3">
+                        {row.staffingStandard}
+                      </td>
+                      <td className="border-b border-line px-2.5 py-2 text-ink sm:px-3">
+                        {row.workers.length > 0
+                          ? row.workers.join(' · ')
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {currentUnassigned.length > 0 && (
+              <p className="mt-3 text-xs text-ink-soft sm:text-sm">
+                לא שובצו: {currentUnassigned.join(' · ')}
+              </p>
+            )}
+          </>
+        )}
+      </SectionCard>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 sm:gap-4">
         {[

@@ -1,8 +1,9 @@
-import type { Worker } from './types'
+import type { AppData, Worker } from './types'
 
 const SESSION_KEY = 'shibutzon-session'
 const DRAFT_KEY = 'shibutzon-draft'
 const SHIFT_STEP_KEY = 'shibutzon-shift-step'
+const APP_DATA_CACHE_KEY = 'shibutzon-app-data-v1'
 
 export interface SessionUser {
   id: string
@@ -62,4 +63,36 @@ export function loadShiftStep(): string | null {
 
 export function saveShiftStep(step: string): void {
   localStorage.setItem(SHIFT_STEP_KEY, step)
+}
+
+export function loadAppDataCache(): AppData | null {
+  try {
+    const raw = localStorage.getItem(APP_DATA_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as AppData
+    if (!Array.isArray(parsed?.workers) || !Array.isArray(parsed?.lanes)) return null
+    return {
+      workers: parsed.workers,
+      lanes: parsed.lanes,
+      history: Array.isArray(parsed.history) ? parsed.history : [],
+      certificationsCatalog: Array.isArray(parsed.certificationsCatalog)
+        ? parsed.certificationsCatalog
+        : [],
+      revision: Number(parsed.revision) || 0,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function saveAppDataCache(data: AppData): void {
+  try {
+    localStorage.setItem(APP_DATA_CACHE_KEY, JSON.stringify(data))
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+export function clearAppDataCache(): void {
+  localStorage.removeItem(APP_DATA_CACHE_KEY)
 }

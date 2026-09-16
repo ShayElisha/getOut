@@ -12,12 +12,14 @@ import { AuditPage } from './pages/AuditPage'
 import { LoginPage } from './pages/LoginPage'
 
 function ProtectedShell() {
-  const { user, loading } = useApp()
+  const { user, loading, data } = useApp()
   if (!user) return <Navigate to="/login" replace />
-  if (loading) {
+  const hasData = data.workers.length > 0 || data.lanes.length > 0
+  if (loading && !hasData) {
     return (
-      <div className="flex min-h-dvh items-center justify-center text-ink-soft">
-        טוען נתונים מ-MongoDB…
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-4 text-ink-soft">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+        <p className="text-sm">טוען נתונים…</p>
       </div>
     )
   }

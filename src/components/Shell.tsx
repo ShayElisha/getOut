@@ -38,6 +38,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
     draft,
     loading,
     syncing,
+    refreshing,
     error,
     refreshFromServer,
     user,
@@ -86,10 +87,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
           )}
           <div className="hidden items-center gap-2 rounded-full border border-line bg-card/80 px-3 py-1.5 text-xs text-ink-soft backdrop-blur lg:flex">
             <Settings2 className="size-3.5" />
-            {loading ? 'מתחבר ל-MongoDB…' : syncing ? 'שומר ל-MongoDB…' : 'מחובר ל-MongoDB'}
+            {loading
+              ? 'טוען…'
+              : refreshing
+                ? 'מעדכן…'
+                : syncing
+                  ? 'שומר…'
+                  : 'מחובר'}
           </div>
         </div>
       </header>
+
+      {(loading || refreshing) && (
+        <div className="mb-3 flex items-center gap-2 rounded-xl border border-line bg-card/80 px-3 py-2 text-xs text-ink-soft">
+          <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+          {loading ? 'טוען נתונים מהשרת…' : 'מרענן נתונים ברקע…'}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-hard/30 bg-hard-soft px-4 py-3 text-sm text-hard">
@@ -104,12 +118,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center py-20 text-ink-soft">
-          טוען נתונים מ-MongoDB…
-        </div>
-      ) : (
-        <>
+      <>
           <nav className="mb-6 hidden gap-1 rounded-2xl border border-line bg-card/90 p-1.5 shadow-sm backdrop-blur lg:flex">
             {NAV.map(({ id, label, icon: Icon }) => {
               const active = view === id
@@ -214,7 +223,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
             </div>
           </nav>
         </>
-      )}
     </div>
   )
 }
