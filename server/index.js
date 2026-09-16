@@ -87,7 +87,7 @@ app.post('/api/password-reset', async (req, res) => {
   }
 })
 
-app.post('/api/managers/resend-temp-password', async (req, res) => {
+app.post('/api/resend-temp-password', async (req, res) => {
   try {
     const actor = requireUser(req)
     const workerId = String(req.body?.workerId || '')
@@ -107,7 +107,7 @@ app.post('/api/managers/resend-temp-password', async (req, res) => {
   }
 })
 
-app.post('/api/mail/test', async (req, res) => {
+app.post('/api/mail-test', async (req, res) => {
   try {
     requireUser(req)
     const to =

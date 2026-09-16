@@ -144,7 +144,7 @@ export function requestPasswordResetRemote(
 export function resendManagerTempPasswordRemote(
   workerId: string,
 ): Promise<{ ok: boolean }> {
-  return request('/api/managers/resend-temp-password', {
+  return request('/api/resend-temp-password', {
     method: 'POST',
     body: JSON.stringify({ workerId }),
   })
