@@ -103,7 +103,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
       {(loading || refreshing) && (
         <div className="mb-3 flex items-center gap-2 rounded-xl border border-line bg-card/80 px-3 py-2 text-xs text-ink-soft">
-          <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+          <span className="page-loader page-loader--sm shrink-0" aria-hidden />
           {loading ? 'טוען נתונים מהשרת…' : 'מרענן נתונים ברקע…'}
         </div>
       )}

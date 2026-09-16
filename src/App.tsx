@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider, useApp } from './context/AppContext'
 import { Shell } from './components/Shell'
+import { PageLoader } from './components/PageLoader'
 import { HomePage } from './pages/HomePage'
 import { ShiftPage } from './pages/ShiftPage'
 import { WorkersPage } from './pages/WorkersPage'
@@ -17,12 +18,7 @@ function ProtectedShell() {
   if (!user) return <Navigate to="/login" replace />
   const hasData = data.workers.length > 0 || data.lanes.length > 0
   if (loading && !hasData) {
-    return (
-      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-4 text-ink-soft">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand border-t-transparent" />
-        <p className="text-sm">טוען נתונים…</p>
-      </div>
-    )
+    return <PageLoader fullScreen label="טוען נתונים…" />
   }
   return (
     <Shell>
