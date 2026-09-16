@@ -71,7 +71,10 @@ export function HistoryPage() {
         }
       >
         {data.history.length === 0 ? (
-          <p className="text-sm text-ink-soft">עדיין אין שיבוצים שמורים.</p>
+          <div className="ui-empty">
+            <p className="ui-empty-title">עדיין אין שיבוצים שמורים</p>
+            <p className="ui-empty-text">אחרי שמירת משמרת יופיעו כאן כל השיבוצים.</p>
+          </div>
         ) : (
           <div className="space-y-5">
             {grouped.map(([date, items]) => (

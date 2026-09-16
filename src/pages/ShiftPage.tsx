@@ -145,12 +145,13 @@ export function ShiftPage() {
 
   if (!draft) {
     return (
-      <div className="rounded-2xl border border-line bg-card p-8 text-center shadow-sm">
-        <p className="text-ink-soft">אין משמרת פעילה.</p>
+      <div className="ui-panel-solid p-8 text-center sm:rounded-2xl">
+        <p className="ui-empty-title">אין משמרת פעילה</p>
+        <p className="ui-empty-text mt-1">התחילו שיבוץ חדש כדי לבחור נתיבים ונוכחות.</p>
         <button
           type="button"
           onClick={startShift}
-          className="mt-4 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white"
+          className="ui-btn ui-btn-primary mt-5"
         >
           התחלת משמרת
         </button>
@@ -167,20 +168,20 @@ export function ShiftPage() {
 
   return (
     <div className="space-y-4 sm:space-y-5">
-      <div className="flex flex-wrap items-end gap-2.5 rounded-xl border border-line bg-card p-3 shadow-sm sm:gap-3 sm:rounded-2xl sm:p-4">
+      <div className="ui-panel-solid flex flex-wrap items-end gap-3 p-3.5 sm:rounded-2xl sm:p-4">
         <label className="text-xs sm:text-sm">
-          <span className="mb-1 block text-[10px] text-ink-soft sm:text-xs">תאריך</span>
+          <span className="mb-1.5 block text-[10px] font-medium text-ink-soft sm:text-xs">תאריך</span>
           <input
             type="date"
-            className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm"
+            className="ui-field !w-auto min-w-[9.5rem] !py-1.5 !text-xs sm:!py-2 sm:!text-sm"
             value={draft.date}
             onChange={(e) => updateDraftMeta({ date: e.target.value })}
           />
         </label>
         <label className="text-xs sm:text-sm">
-          <span className="mb-1 block text-[10px] text-ink-soft sm:text-xs">סוג משמרת</span>
+          <span className="mb-1.5 block text-[10px] font-medium text-ink-soft sm:text-xs">סוג משמרת</span>
           <select
-            className="rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs sm:px-3 sm:py-2 sm:text-sm"
+            className="ui-field !w-auto min-w-[8rem] !py-1.5 !text-xs sm:!py-2 sm:!text-sm"
             value={draft.shiftType}
             onChange={(e) =>
               updateDraftMeta({ shiftType: e.target.value as ShiftType })
@@ -200,7 +201,7 @@ export function ShiftPage() {
               discardDraft()
             }
           }}
-          className="mr-auto rounded-lg px-2.5 py-1.5 text-xs font-semibold text-hard hover:bg-hard-soft sm:px-3 sm:py-2 sm:text-sm"
+          className="ui-btn ui-btn-danger mr-auto !py-1.5 text-xs sm:text-sm"
         >
           בטל טיוטה
         </button>
@@ -235,11 +236,11 @@ export function ShiftPage() {
       </ol>
 
       {shiftStep === 'lanes' && (
-        <section className="rounded-xl border border-line bg-card p-3.5 shadow-sm sm:rounded-2xl sm:p-5">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 sm:mb-4">
+        <section className="ui-panel-solid p-4 sm:rounded-2xl sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-display text-base font-bold sm:text-lg">בחירת נתיבים פעילים</h2>
-              <p className="text-xs text-ink-soft sm:text-sm">
+              <h2 className="ui-title">בחירת נתיבים פעילים</h2>
+              <p className="ui-subtitle">
                 סמנו אילו נתיבים פתוחים במשמרת זו
               </p>
             </div>
@@ -260,7 +261,7 @@ export function ShiftPage() {
               </button>
             </div>
           </div>
-          <ul className="grid gap-2 sm:grid-cols-2">
+          <ul className="flex flex-col gap-2">
             {data.lanes.map((lane) => {
               const on = draft.activeLaneIds.includes(lane.id)
               return (
@@ -270,8 +271,8 @@ export function ShiftPage() {
                     onClick={() => toggleLane(lane.id)}
                     className={`flex w-full items-start gap-2.5 rounded-xl border p-3 text-right transition sm:gap-3 sm:p-4 ${
                       on
-                        ? 'border-brand bg-brand/5 ring-1 ring-brand/30'
-                        : 'border-line bg-surface/50 opacity-70'
+                        ? 'border-brand bg-brand/5 shadow-[var(--shadow-panel)] ring-1 ring-brand/25'
+                        : 'border-line bg-surface/50 opacity-75 hover:border-brand/25 hover:opacity-100'
                     }`}
                   >
                     <span
@@ -305,7 +306,7 @@ export function ShiftPage() {
               type="button"
               disabled={draft.activeLaneIds.length === 0}
               onClick={() => setShiftStep('attendance')}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-white disabled:opacity-40 sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
+              className="ui-btn ui-btn-primary disabled:opacity-40"
             >
               המשך לנוכחות
               <ChevronLeft className="size-3.5 sm:size-4" />
@@ -315,11 +316,11 @@ export function ShiftPage() {
       )}
 
       {shiftStep === 'attendance' && (
-        <section className="rounded-xl border border-line bg-card p-3.5 shadow-sm sm:rounded-2xl sm:p-5">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 sm:mb-4">
+        <section className="ui-panel-solid p-4 sm:rounded-2xl sm:p-5">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-display text-base font-bold sm:text-lg">סימון נוכחות</h2>
-              <p className="text-xs text-ink-soft sm:text-sm">מי מהבודקים נמצא במשמרת</p>
+              <h2 className="ui-title">סימון נוכחות</h2>
+              <p className="ui-subtitle">מי מהבודקים נמצא במשמרת</p>
             </div>
             <div className="flex gap-2 text-[11px] sm:text-xs">
               <button
@@ -412,10 +413,10 @@ export function ShiftPage() {
             </div>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-2.5 sm:gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="font-display text-base font-bold sm:text-lg">לוח שיבוץ</h2>
-              <p className="text-xs text-ink-soft sm:text-sm">
+              <h2 className="ui-title">לוח שיבוץ</h2>
+              <p className="ui-subtitle">
                 {draft.unassignedWorkerIds.length > 0
                   ? `לא ניתן לשמור עד שכל הנוכחים ישובצו (${draft.unassignedWorkerIds.length} ממתינים)`
                   : 'עריכה ידנית מרשימה נפתחת · לחצו שמירה לשמירה בהיסטוריה'}
@@ -478,7 +479,7 @@ export function ShiftPage() {
           </div>
 
           <div
-            className="overflow-hidden rounded-xl border border-line bg-white shadow-sm sm:rounded-2xl"
+            className="ui-panel-solid overflow-hidden sm:rounded-2xl"
             style={{ fontFamily: 'Heebo, sans-serif' }}
           >
             <div className="border-b border-line bg-gradient-to-l from-[#0f3350] to-[#1a4a6e] px-3.5 py-3 text-white sm:px-5 sm:py-4">
@@ -495,7 +496,7 @@ export function ShiftPage() {
                 · {SHIFT_TYPE_LABELS[draft.shiftType]}
               </p>
             </div>
-            <div className="grid gap-0 divide-y divide-line sm:grid-cols-2 sm:divide-x sm:divide-y-0 sm:divide-x-reverse">
+            <div className="flex flex-col divide-y divide-line">
               {draft.activeLaneIds.map((laneId) => {
                 const lane = data.lanes.find((l) => l.id === laneId)
                 if (!lane) return null
@@ -505,7 +506,7 @@ export function ShiftPage() {
 
                 return (
                   <div key={laneId} className="p-3 sm:p-4">
-                    <div className="mb-2.5 flex items-center justify-between gap-2 sm:mb-3">
+                    <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 sm:mb-3">
                       <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
                         <h4 className="text-sm font-bold text-[#0f1c2e] sm:text-base">
                           {lane.name}
@@ -520,7 +521,8 @@ export function ShiftPage() {
                           <Plus className="size-3.5 sm:size-4" />
                         </button>
                       </div>
-                      <div className="flex items-center gap-1.5 sm:gap-2">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <IntensityBadge intensity={lane.intensity} />
                         {lane.afternoonHandoff && (
                           <span className="rounded-md bg-[#f3e0d4] px-1.5 py-0.5 text-[9px] font-bold text-[#c45c26] sm:px-2 sm:text-[10px]">
                             החלפת צהריים
@@ -531,7 +533,6 @@ export function ShiftPage() {
                             +תוספת
                           </span>
                         )}
-                        <IntensityBadge intensity={lane.intensity} />
                       </div>
                     </div>
                     <div className="space-y-1.5 sm:space-y-2">
@@ -541,9 +542,7 @@ export function ShiftPage() {
                         )
                         const options = present
                           .filter((w) => {
-                            // Always keep the worker currently in this slot
                             if (w.id === workerId) return true
-                            // Only people not assigned to any lane
                             return !draft.assignments.some((a) =>
                               a.workerIds.includes(w.id),
                             )

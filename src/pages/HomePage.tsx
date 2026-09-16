@@ -428,7 +428,7 @@ export function HomePage() {
             key={card.label}
             type="button"
             onClick={card.onClick}
-            className={`group rounded-xl border border-line bg-card p-3.5 text-right shadow-sm transition hover:border-brand/30 hover:shadow-md animate-fade-up stagger-${i + 1} sm:rounded-2xl sm:p-5`}
+            className={`group ui-panel-solid p-3.5 text-right transition hover:border-brand/30 hover:shadow-[var(--shadow-panel-hover)] animate-fade-up stagger-${i + 1} sm:rounded-2xl sm:p-5`}
           >
             <card.icon className="mb-2 size-4 text-brand transition group-hover:scale-110 sm:mb-3 sm:size-5" />
             <p className="text-[11px] font-medium text-ink-soft sm:text-xs">{card.label}</p>

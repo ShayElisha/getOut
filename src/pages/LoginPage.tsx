@@ -2,15 +2,25 @@ import { useState } from 'react'
 import { LogIn } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { AppFooter } from '../components/AppFooter'
+import { FieldError, FieldLabel } from '../components/ui'
 
 export function LoginPage() {
   const { login } = useApp()
   const [phone, setPhone] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [touched, setTouched] = useState(false)
+
+  const phoneTrimmed = phone.trim()
+  const phoneInvalid = touched && !phoneTrimmed
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setTouched(true)
+    if (!phoneTrimmed) {
+      setError('נא להזין מספר טלפון')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
@@ -23,51 +33,63 @@ export function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-8 sm:py-10">
-      <div className="rounded-2xl border border-line bg-card p-5 shadow-sm sm:rounded-3xl sm:p-8">
-        <p className="mb-0.5 text-[10px] font-semibold tracking-[0.18em] text-accent uppercase sm:mb-1 sm:text-xs sm:tracking-[0.2em]">
-          GATE OUT
-        </p>
-        <h1 className="font-display text-[1.75rem] font-bold leading-tight text-brand-deep sm:text-3xl">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-10 sm:py-12">
+      <div className="ui-panel-solid p-5 sm:rounded-[1.25rem] sm:p-8">
+        <p className="ui-eyebrow mb-1">GATE OUT</p>
+        <h1 className="font-display text-[1.85rem] font-bold leading-tight tracking-tight text-brand-deep sm:text-3xl">
           שיבוצון
         </h1>
-        <p className="mt-1.5 text-xs text-ink-soft sm:mt-2 sm:text-sm">
+        <p className="ui-subtitle mt-2 text-xs sm:text-sm">
           התחברות מנהלים עם מספר טלפון
         </p>
 
-        <form onSubmit={submit} className="mt-5 space-y-3.5 sm:mt-6 sm:space-y-4">
-          <label className="block text-xs sm:text-sm">
-            <span className="mb-1 block text-ink-soft">מספר טלפון</span>
+        <form onSubmit={submit} className="mt-6 space-y-4 sm:mt-7" noValidate>
+          <div>
+            <FieldLabel htmlFor="login-phone">מספר טלפון</FieldLabel>
             <input
-              className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm sm:px-4 sm:py-3 sm:text-base"
+              id="login-phone"
+              className="ui-field"
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value)
+                if (error) setError(null)
+              }}
+              onBlur={() => setTouched(true)}
               placeholder="05XXXXXXXX"
               dir="ltr"
               inputMode="tel"
               autoComplete="tel"
               required
+              aria-invalid={phoneInvalid || Boolean(error) || undefined}
+              aria-describedby={error || phoneInvalid ? 'login-phone-error' : undefined}
+              disabled={busy}
             />
-          </label>
-
-          {error && (
-            <p className="rounded-xl bg-hard-soft px-3 py-2 text-xs font-medium text-hard sm:text-sm">
-              {error}
-            </p>
-          )}
+            <div id="login-phone-error">
+              <FieldError message={phoneInvalid ? 'נא להזין מספר טלפון' : error} />
+            </div>
+          </div>
 
           <button
             type="submit"
-            disabled={busy || !phone.trim()}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50 sm:py-3"
+            disabled={busy}
+            className="ui-btn ui-btn-primary w-full py-2.5 sm:py-3"
           >
-            <LogIn className="size-4" />
-            {busy ? 'מתחבר…' : 'התחברות'}
+            {busy ? (
+              <>
+                <span className="page-loader page-loader--sm" aria-hidden />
+                מתחבר…
+              </>
+            ) : (
+              <>
+                <LogIn className="size-4" aria-hidden />
+                התחברות
+              </>
+            )}
           </button>
         </form>
       </div>
 
-      <AppFooter className="mt-8" />
+      <AppFooter className="mt-10" />
     </div>
   )
 }

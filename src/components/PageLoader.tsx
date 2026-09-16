@@ -17,21 +17,24 @@ export function PageLoader({
 
   if (!fullScreen) {
     return (
-      <div className="inline-flex items-center gap-2">
+      <div className="inline-flex items-center gap-2.5">
         {loader}
-        {label ? <span className="text-xs text-ink-soft sm:text-sm">{label}</span> : null}
+        {label ? <span className="ui-muted">{label}</span> : null}
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center gap-4 px-4 text-ink-soft">
+    <div className="flex min-h-dvh flex-col items-center justify-center gap-5 px-4">
       {loader}
       <div className="text-center">
-        <p className="mb-0.5 text-[10px] font-semibold tracking-[0.16em] text-accent uppercase">
-          GATE OUT
-        </p>
-        <p className="text-sm font-medium text-ink-soft">{label}</p>
+        <p className="ui-eyebrow mb-1.5">GATE OUT</p>
+        <p className="ui-body font-medium text-ink-soft">{label}</p>
+      </div>
+      <div className="mt-2 flex w-full max-w-xs flex-col gap-2" aria-hidden>
+        <div className="ui-skeleton mx-auto h-3 w-[75%]" />
+        <div className="ui-skeleton h-3 w-full" />
+        <div className="ui-skeleton mx-auto h-3 w-[85%]" />
       </div>
     </div>
   )

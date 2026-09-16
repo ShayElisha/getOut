@@ -18,15 +18,19 @@ export function WorkersPage() {
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState(emptyForm())
 
+  const [nameError, setNameError] = useState<string | null>(null)
+
   const openCreate = () => {
     setEditing(null)
     setForm(emptyForm())
+    setNameError(null)
     setCreating(true)
   }
 
   const openEdit = (w: Worker) => {
     setCreating(false)
     setEditing(w)
+    setNameError(null)
     setForm({
       fullName: w.fullName,
       phone: w.phone,
@@ -39,6 +43,7 @@ export function WorkersPage() {
   const close = () => {
     setCreating(false)
     setEditing(null)
+    setNameError(null)
   }
 
   const toggleCert = (c: string) => {
@@ -51,7 +56,11 @@ export function WorkersPage() {
   }
 
   const save = () => {
-    if (!form.fullName.trim()) return
+    if (!form.fullName.trim()) {
+      setNameError('נא להזין שם מלא')
+      return
+    }
+    setNameError(null)
     if (editing) updateWorker({ ...editing, ...form })
     else addWorker(form)
     close()
@@ -69,30 +78,35 @@ export function WorkersPage() {
   }
 
   const formPanel = (title: string) => (
-    <div className="rounded-xl border border-brand/20 bg-surface p-4 animate-fade-up">
-      <h3 className="mb-3 text-sm font-bold">{title}</h3>
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="ui-panel animate-fade-up border-brand/20 bg-surface p-4 sm:rounded-2xl">
+      <h3 className="ui-title mb-4 text-sm sm:text-base">{title}</h3>
+      <div className="grid gap-4 sm:grid-cols-2">
         <label className="block text-sm">
-          <span className="mb-1 block text-ink-soft">שם מלא</span>
+          <span className="mb-1.5 block text-xs font-medium text-ink-soft sm:text-sm">שם מלא</span>
           <input
-            className="w-full rounded-lg border border-line bg-card px-3 py-2"
+            className="ui-field bg-card"
             value={form.fullName}
-            onChange={(e) => setForm({ ...form, fullName: e.target.value })}
+            onChange={(e) => {
+              setForm({ ...form, fullName: e.target.value })
+              if (nameError) setNameError(null)
+            }}
+            aria-invalid={Boolean(nameError) || undefined}
           />
+          {nameError && <p className="ui-field-error">{nameError}</p>}
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block text-ink-soft">טלפון</span>
+          <span className="mb-1.5 block text-xs font-medium text-ink-soft sm:text-sm">טלפון</span>
           <input
-            className="w-full rounded-lg border border-line bg-card px-3 py-2"
+            className="ui-field bg-card"
             value={form.phone}
             onChange={(e) => setForm({ ...form, phone: e.target.value })}
             dir="ltr"
           />
         </label>
         <label className="block text-sm">
-          <span className="mb-1 block text-ink-soft">סטטוס</span>
+          <span className="mb-1.5 block text-xs font-medium text-ink-soft sm:text-sm">סטטוס</span>
           <select
-            className="w-full rounded-lg border border-line bg-card px-3 py-2"
+            className="ui-field bg-card"
             value={form.status}
             onChange={(e) =>
               setForm({ ...form, status: e.target.value as WorkerStatus })
@@ -105,14 +119,14 @@ export function WorkersPage() {
         <label className="flex items-center gap-2 self-end pb-2 text-sm font-medium">
           <input
             type="checkbox"
-            className="size-4 rounded border-line"
+            className="size-4 rounded border-line accent-brand"
             checked={form.isManager}
             onChange={(e) => onManagerChange(e.target.checked)}
           />
           מנהל (יכול להתחבר למערכת)
         </label>
         <div className="sm:col-span-2">
-          <p className="mb-2 text-sm text-ink-soft">הסמכות</p>
+          <p className="mb-2 text-xs font-medium text-ink-soft sm:text-sm">הסמכות</p>
           <div className="flex flex-wrap gap-2">
             {data.certificationsCatalog.map((c) => {
               const on = form.certifications.includes(c)
@@ -123,8 +137,8 @@ export function WorkersPage() {
                   onClick={() => toggleCert(c)}
                   className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                     on
-                      ? 'bg-brand text-white'
-                      : 'bg-card text-ink-soft ring-1 ring-line'
+                      ? 'bg-brand text-white shadow-sm'
+                      : 'bg-card text-ink-soft ring-1 ring-line hover:border-brand/30 hover:text-ink'
                   }`}
                 >
                   {c}
@@ -134,19 +148,11 @@ export function WorkersPage() {
           </div>
         </div>
       </div>
-      <div className="mt-4 flex gap-2">
-        <button
-          type="button"
-          onClick={save}
-          className="rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-white"
-        >
+      <div className="mt-5 flex gap-2">
+        <button type="button" onClick={save} className="ui-btn ui-btn-primary">
           שמירה
         </button>
-        <button
-          type="button"
-          onClick={close}
-          className="rounded-xl px-4 py-2 text-sm font-medium text-ink-soft"
-        >
+        <button type="button" onClick={close} className="ui-btn ui-btn-ghost">
           ביטול
         </button>
       </div>
@@ -162,7 +168,7 @@ export function WorkersPage() {
           <button
             type="button"
             onClick={openCreate}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-2.5 py-1.5 text-xs font-semibold text-white sm:px-3 sm:py-2 sm:text-sm"
+            className="ui-btn ui-btn-primary !px-2.5 !py-1.5 text-xs sm:!px-3 sm:!py-2 sm:text-sm"
           >
             <Plus className="size-3.5 sm:size-4" />
             הוספה
@@ -171,6 +177,16 @@ export function WorkersPage() {
       >
         {creating && <div className="mb-4 sm:mb-5">{formPanel('בודק חדש')}</div>}
 
+        {data.workers.length === 0 && !creating ? (
+          <div className="ui-empty mb-2">
+            <p className="ui-empty-title">אין בודקים עדיין</p>
+            <p className="ui-empty-text">הוסיפו בודקים למאגר כדי להתחיל בשיבוץ.</p>
+            <button type="button" onClick={openCreate} className="ui-btn ui-btn-primary mt-2">
+              <Plus className="size-3.5" />
+              הוספת בודק
+            </button>
+          </div>
+        ) : null}
         <ul className="divide-y divide-line">
           {data.workers.map((w) => {
             const isEditing = editing?.id === w.id

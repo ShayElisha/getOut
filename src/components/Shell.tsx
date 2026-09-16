@@ -61,141 +61,124 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const moreActive = useMemo(() => MOBILE_MORE.includes(view), [view])
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-3.5 pb-24 pt-4 sm:px-6 sm:pt-6 lg:pb-8 lg:pt-8">
-      <header className="mb-5 flex flex-wrap items-end justify-between gap-3 animate-fade-up sm:mb-8 sm:gap-4">
+    <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:pb-10 lg:pt-9">
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-4 animate-fade-up sm:mb-8">
         <div>
-          <p className="mb-0.5 text-[10px] font-semibold tracking-[0.18em] text-accent uppercase sm:mb-1 sm:text-xs sm:tracking-[0.2em]">
-            GATE OUT
-          </p>
-          <h1 className="font-display text-[1.65rem] font-bold leading-tight tracking-tight text-brand-deep sm:text-4xl">
+          <p className="ui-eyebrow mb-1">GATE OUT</p>
+          <h1 className="font-display text-[1.75rem] font-bold leading-[1.15] tracking-tight text-brand-deep sm:text-4xl">
             שיבוצון
           </h1>
-          <p className="mt-0.5 text-xs text-ink-soft sm:mt-1 sm:text-sm">
+          <p className="ui-subtitle mt-1.5 text-xs sm:text-sm">
             ניהול ושיבוץ עמדות שער יציאה
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {user && (
-            <div className="flex items-center gap-1.5 rounded-full border border-line bg-card/80 px-2.5 py-1 text-[11px] text-ink-soft backdrop-blur sm:gap-2 sm:px-3 sm:py-1.5 sm:text-xs">
+            <div className="flex items-center gap-1.5 rounded-full border border-line bg-card/90 px-2.5 py-1 text-[11px] text-ink-soft shadow-[var(--shadow-panel)] backdrop-blur sm:gap-2 sm:px-3 sm:py-1.5 sm:text-xs">
               <span className="font-semibold text-ink">{user.fullName}</span>
               <button
                 type="button"
                 onClick={logout}
-                className="inline-flex items-center gap-1 rounded-lg px-1.5 py-0.5 font-medium text-brand hover:bg-surface sm:px-2 sm:py-1"
+                className="ui-btn ui-btn-ghost !px-2 !py-1 text-[11px] text-brand sm:text-xs"
               >
                 <LogOut className="size-3 sm:size-3.5" />
                 יציאה
               </button>
             </div>
           )}
-          <div className="hidden items-center gap-2 rounded-full border border-line bg-card/80 px-3 py-1.5 text-xs text-ink-soft backdrop-blur lg:flex">
-            <Settings2 className="size-3.5" />
-            {loading
-              ? 'טוען…'
-              : refreshing
-                ? 'מעדכן…'
-                : syncing
-                  ? 'שומר…'
-                  : 'מחובר'}
+          <div className="hidden items-center gap-2 rounded-full border border-line bg-card/90 px-3 py-1.5 text-xs text-ink-soft shadow-[var(--shadow-panel)] backdrop-blur lg:flex">
+            <Settings2 className="size-3.5" aria-hidden />
+            <span>
+              {loading
+                ? 'טוען…'
+                : refreshing
+                  ? 'מעדכן…'
+                  : syncing
+                    ? 'שומר…'
+                    : 'מחובר'}
+            </span>
           </div>
         </div>
       </header>
 
       {(loading || refreshing) && (
-        <div className="mb-3 flex items-center gap-2 rounded-xl border border-line bg-card/80 px-3 py-2 text-xs text-ink-soft">
+        <div
+          className="mb-4 flex items-center gap-2.5 rounded-xl border border-line bg-card/90 px-3.5 py-2.5 text-xs text-ink-soft shadow-[var(--shadow-panel)]"
+          role="status"
+          aria-live="polite"
+        >
           <span className="page-loader page-loader--sm shrink-0" aria-hidden />
           {loading ? 'טוען נתונים מהשרת…' : 'מרענן נתונים ברקע…'}
         </div>
       )}
 
       {error && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-hard/30 bg-hard-soft px-4 py-3 text-sm text-hard">
+        <div
+          className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-hard/30 bg-hard-soft px-4 py-3 text-sm text-hard"
+          role="alert"
+        >
           <span>שגיאת שרת: {error}</span>
           <button
             type="button"
             onClick={() => void refreshFromServer()}
-            className="font-semibold underline"
+            className="ui-btn ui-btn-danger !py-1.5"
           >
             נסה שוב
           </button>
         </div>
       )}
 
-      <>
-          <nav className="mb-6 hidden gap-1 rounded-2xl border border-line bg-card/90 p-1.5 shadow-sm backdrop-blur lg:flex">
-            {NAV.map(({ id, label, icon: Icon }) => {
-              const active = view === id
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => go(id)}
-                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-medium transition xl:gap-2 xl:text-sm ${
-                    active
-                      ? 'bg-brand text-white shadow-sm'
-                      : 'text-ink-soft hover:bg-surface hover:text-ink'
-                  }`}
-                >
-                  <Icon className="size-4 shrink-0" />
-                  <span className="truncate">{label}</span>
-                </button>
-              )
-            })}
-          </nav>
+      <nav
+        className="ui-panel mb-6 hidden gap-1 p-1.5 lg:flex"
+        aria-label="ניווט ראשי"
+      >
+        {NAV.map(({ id, label, icon: Icon }) => {
+          const active = view === id
+          return (
+            <button
+              key={id}
+              type="button"
+              onClick={() => go(id)}
+              aria-current={active ? 'page' : undefined}
+              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-medium transition xl:gap-2 xl:text-sm ${
+                active
+                  ? 'bg-brand text-white shadow-sm'
+                  : 'text-ink-soft hover:bg-surface hover:text-ink'
+              }`}
+            >
+              <Icon className="size-4 shrink-0" aria-hidden />
+              <span className="truncate">{label}</span>
+            </button>
+          )
+        })}
+      </nav>
 
-          <main className="flex-1 animate-fade-up stagger-1">{children}</main>
+      <main className="flex-1 animate-fade-up stagger-1">{children}</main>
 
-          <AppFooter className="mb-2 mt-8 sm:mt-10 lg:mb-0" />
+      <AppFooter className="mb-2 mt-10 sm:mt-12 lg:mb-0" />
 
-          {moreOpen && (
-            <div className="fixed inset-0 z-50 lg:hidden">
+      {moreOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="תפריט נוסף">
+          <button
+            type="button"
+            className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]"
+            aria-label="סגור"
+            onClick={() => setMoreOpen(false)}
+          />
+          <div className="absolute inset-x-0 bottom-0 animate-fade-up rounded-t-2xl border border-line bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[var(--shadow-panel-hover)]">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="ui-title">עוד</h2>
               <button
                 type="button"
-                className="absolute inset-0 bg-ink/40"
-                aria-label="סגור"
                 onClick={() => setMoreOpen(false)}
-              />
-              <div className="absolute inset-x-0 bottom-0 animate-fade-up rounded-t-2xl border border-line bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl">
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="font-display text-base font-bold text-ink">עוד</h2>
-                  <button
-                    type="button"
-                    onClick={() => setMoreOpen(false)}
-                    className="rounded-lg p-1.5 text-ink-soft hover:bg-surface"
-                    aria-label="סגור"
-                  >
-                    <X className="size-4" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {NAV.filter((n) => MOBILE_MORE.includes(n.id)).map(
-                    ({ id, label, icon: Icon }) => {
-                      const active = view === id
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => go(id)}
-                          className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition ${
-                            active
-                              ? 'border-brand bg-brand/10 text-brand'
-                              : 'border-line bg-surface text-ink hover:border-brand/30'
-                          }`}
-                        >
-                          <Icon className="size-5 shrink-0" />
-                          {label}
-                        </button>
-                      )
-                    },
-                  )}
-                </div>
-              </div>
+                className="ui-btn ui-btn-ghost !p-2"
+                aria-label="סגור"
+              >
+                <X className="size-4" />
+              </button>
             </div>
-          )}
-
-          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur lg:hidden">
-            <div className="mx-auto flex max-w-lg justify-around">
-              {NAV.filter((n) => MOBILE_PRIMARY.includes(n.id)).map(
+            <div className="grid grid-cols-2 gap-2">
+              {NAV.filter((n) => MOBILE_MORE.includes(n.id)).map(
                 ({ id, label, icon: Icon }) => {
                   const active = view === id
                   return (
@@ -203,31 +186,64 @@ export function Shell({ children }: { children: React.ReactNode }) {
                       key={id}
                       type="button"
                       onClick={() => go(id)}
-                      className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] font-semibold tracking-wide ${
-                        active ? 'text-brand' : 'text-ink-soft'
+                      aria-current={active ? 'page' : undefined}
+                      className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+                        active
+                          ? 'border-brand bg-brand/10 text-brand'
+                          : 'border-line bg-surface text-ink hover:border-brand/30'
                       }`}
                     >
-                      <Icon className={`size-5 ${active ? 'stroke-[2.25]' : ''}`} />
-                      <span className="truncate">{label}</span>
+                      <Icon className="size-5 shrink-0" aria-hidden />
+                      {label}
                     </button>
                   )
                 },
               )}
-              <button
-                type="button"
-                onClick={() => setMoreOpen(true)}
-                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] font-semibold tracking-wide ${
-                  moreActive || moreOpen ? 'text-brand' : 'text-ink-soft'
-                }`}
-              >
-                <MoreHorizontal
-                  className={`size-5 ${moreActive || moreOpen ? 'stroke-[2.25]' : ''}`}
-                />
-                <span>עוד</span>
-              </button>
             </div>
-          </nav>
-        </>
+          </div>
+        </div>
+      )}
+
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1.5 shadow-[0_-8px_24px_rgb(15_28_46/0.06)] backdrop-blur lg:hidden"
+        aria-label="ניווט מובייל"
+      >
+        <div className="mx-auto flex max-w-lg justify-around">
+          {NAV.filter((n) => MOBILE_PRIMARY.includes(n.id)).map(
+            ({ id, label, icon: Icon }) => {
+              const active = view === id
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => go(id)}
+                  aria-current={active ? 'page' : undefined}
+                  className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] font-semibold tracking-wide transition ${
+                    active ? 'text-brand' : 'text-ink-soft hover:text-ink'
+                  }`}
+                >
+                  <Icon className={`size-5 ${active ? 'stroke-[2.25]' : ''}`} aria-hidden />
+                  <span className="truncate">{label}</span>
+                </button>
+              )
+            },
+          )}
+          <button
+            type="button"
+            onClick={() => setMoreOpen(true)}
+            aria-expanded={moreOpen}
+            className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] font-semibold tracking-wide transition ${
+              moreActive || moreOpen ? 'text-brand' : 'text-ink-soft hover:text-ink'
+            }`}
+          >
+            <MoreHorizontal
+              className={`size-5 ${moreActive || moreOpen ? 'stroke-[2.25]' : ''}`}
+              aria-hidden
+            />
+            <span>עוד</span>
+          </button>
+        </div>
+      </nav>
     </div>
   )
 }

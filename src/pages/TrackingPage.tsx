@@ -175,11 +175,17 @@ export function TrackingPage() {
         </div>
 
         {data.history.length === 0 ? (
-          <p className="text-sm text-ink-soft">
-            אין עדיין שיבוצים שמורים. אחרי שמירת משמרות תופיע כאן טבלת המעקב.
-          </p>
+          <div className="ui-empty">
+            <p className="ui-empty-title">אין שיבוצים שמורים</p>
+            <p className="ui-empty-text">
+              אחרי שמירת משמרות תופיע כאן טבלת המעקב.
+            </p>
+          </div>
         ) : activeWorkers.length === 0 || lanes.length === 0 ? (
-          <p className="text-sm text-ink-soft">חסרים בודקים פעילים או נתיבים להצגה.</p>
+          <div className="ui-empty">
+            <p className="ui-empty-title">אין מספיק נתונים להצגה</p>
+            <p className="ui-empty-text">חסרים בודקים פעילים או נתיבים.</p>
+          </div>
         ) : (
           <>
             <div className="mb-3 flex flex-wrap items-center gap-2 text-[11px] text-ink-soft sm:text-xs">
