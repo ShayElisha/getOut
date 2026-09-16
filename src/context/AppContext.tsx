@@ -75,6 +75,8 @@ interface AppContextValue {
   shiftStep: ShiftStep
   setShiftStep: (s: ShiftStep) => void
   draft: ShiftDraft | null
+  /** True only after the in-memory shift differs from its clean baseline (and thus is persisted). */
+  draftDirty: boolean
   startShift: () => void
   /** Discard in-progress shift draft and return home */
   discardDraft: () => void
@@ -169,6 +171,24 @@ function restoreStep(): ShiftStep {
   return 'lanes'
 }
 
+/** Stable snapshot used to detect whether the user changed the current shift. */
+function snapshotDraft(d: ShiftDraft): string {
+  return JSON.stringify({
+    id: d.id,
+    date: d.date,
+    shiftType: d.shiftType,
+    activeLaneIds: d.activeLaneIds,
+    presentWorkerIds: d.presentWorkerIds,
+    assignments: d.assignments.map((a) => ({
+      laneId: a.laneId,
+      workerIds: a.workerIds,
+      notes: a.notes?.trim() ?? '',
+    })),
+    warnings: d.warnings,
+    unassignedWorkerIds: d.unassignedWorkerIds,
+  })
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -182,6 +202,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const view = viewFromPath(location.pathname)
   const [shiftStep, setShiftStepState] = useState<ShiftStep>(() => restoreStep())
   const [draft, setDraft] = useState<ShiftDraft | null>(() => restoreDraft())
+  /** Restored drafts were already persisted → treat as dirty until discarded/saved clean. */
+  const [draftDirty, setDraftDirty] = useState(() => restoreDraft() != null)
+  const draftBaselineRef = useRef<string | null>(null)
 
   const dataRef = useRef(data)
   dataRef.current = data
@@ -189,6 +212,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const skipNextSync = useRef(true)
   const userRef = useRef(user)
   userRef.current = user
+
+  const adoptCleanDraft = useCallback((next: ShiftDraft) => {
+    draftBaselineRef.current = snapshotDraft(next)
+    setDraftDirty(false)
+    setDraft(next)
+  }, [])
 
   const applyRemoteData = useCallback((remote: AppData) => {
     const workers = remote.workers.map((w) => ({
@@ -211,11 +240,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setShiftStep = useCallback((s: ShiftStep) => {
     setShiftStepState(s)
-    saveShiftStep(s)
   }, [])
 
+  // Persist draft only after a real edit vs. the clean baseline.
   useEffect(() => {
-    if (draft) {
+    if (!draft) {
+      setDraftDirty(false)
+      draftBaselineRef.current = null
+      clearDraftStorage()
+      return
+    }
+    const baseline = draftBaselineRef.current
+    const dirty = baseline === null || snapshotDraft(draft) !== baseline
+    setDraftDirty(dirty)
+    if (dirty) {
       saveDraftJson(JSON.stringify(draft))
       saveShiftStep(shiftStep)
     } else {
@@ -223,10 +261,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [draft, shiftStep])
 
+  // Leaving the shift flow without edits should not keep a phantom draft in memory.
+  useEffect(() => {
+    const onShift =
+      location.pathname === '/shift' || location.pathname.startsWith('/shift/')
+    const loadingHistoryItem = /^\/history\/[^/]+\/?$/.test(location.pathname)
+    if (onShift || loadingHistoryItem || !draft) return
+    const baseline = draftBaselineRef.current
+    if (baseline !== null && snapshotDraft(draft) === baseline) {
+      setDraft(null)
+      clearDraftStorage()
+      setShiftStepState('lanes')
+    }
+  }, [location.pathname, draft])
+
   const handleAuthFailure = useCallback(() => {
     clearSession()
     clearAppDataCache()
     setUser(null)
+    draftBaselineRef.current = null
+    setDraftDirty(false)
     setDraft(null)
     clearDraftStorage()
     setData(emptyData)
@@ -325,6 +379,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearAppDataCache()
     clearDraftStorage()
     setUser(null)
+    draftBaselineRef.current = null
+    setDraftDirty(false)
     setDraft(null)
     setData(emptyData)
     navigate('/login', { replace: true })
@@ -357,7 +413,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const item = data.history.find((h) => h.id === id)
     if (!item) return
     const assigned = new Set(item.assignments.flatMap((a) => a.workerIds))
-    setDraft({
+    adoptCleanDraft({
       id: item.id,
       date: item.date,
       shiftType: item.shiftType,
@@ -369,7 +425,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     setShiftStep('board')
     navigate('/shift', { replace: true })
-  }, [location.pathname, user, loading, data.history, data.lanes, navigate, setShiftStep])
+  }, [
+    location.pathname,
+    user,
+    loading,
+    data.history,
+    data.lanes,
+    navigate,
+    setShiftStep,
+    adoptCleanDraft,
+  ])
 
   const toSchedule = useCallback((d: ShiftDraft): ShiftSchedule => {
     const now = new Date().toISOString()
@@ -386,7 +451,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const startShift = useCallback(() => {
-    setDraft({
+    adoptCleanDraft({
       id: uuid(),
       date: todayISO(),
       shiftType: defaultShiftType(),
@@ -398,9 +463,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     setShiftStep('lanes')
     setView('shift')
-  }, [setShiftStep, setView])
+  }, [adoptCleanDraft, setShiftStep, setView])
 
   const discardDraft = useCallback(() => {
+    draftBaselineRef.current = null
+    setDraftDirty(false)
     setDraft(null)
     clearDraftStorage()
     setShiftStep('lanes')
@@ -610,6 +677,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       skipNextSync.current = true
       setData(saved)
       saveAppDataCache(saved)
+      // Saved state becomes the new clean baseline — no lingering draft in storage.
+      draftBaselineRef.current = snapshotDraft(draft)
+      setDraftDirty(false)
+      clearDraftStorage()
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) handleAuthFailure()
       if (e instanceof ApiError && e.status === 409 && e.current) {
@@ -743,6 +814,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       skipNextSync.current = true
       setData(seeded)
       saveAppDataCache(seeded)
+      draftBaselineRef.current = null
+      setDraftDirty(false)
       setDraft(null)
       clearDraftStorage()
       setView('home')
@@ -774,6 +847,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       shiftStep,
       setShiftStep,
       draft,
+      draftDirty,
       startShift,
       discardDraft,
       updateDraftMeta,
@@ -814,6 +888,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       shiftStep,
       setShiftStep,
       draft,
+      draftDirty,
       startShift,
       discardDraft,
       updateDraftMeta,

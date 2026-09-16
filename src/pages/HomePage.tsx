@@ -26,6 +26,7 @@ export function HomePage() {
   const {
     data,
     draft,
+    draftDirty,
     startShift,
     discardDraft,
     setView,
@@ -250,7 +251,7 @@ export function HomePage() {
           }}
         />
         <div className="relative max-w-xl">
-          {draft && draftSummary ? (
+          {draft && draftDirty && draftSummary ? (
             <>
               <p className="mb-1 text-[10px] font-semibold tracking-[0.16em] text-white/60 uppercase sm:text-xs">
                 משמרת פעילה
