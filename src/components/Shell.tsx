@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import {
   ClipboardList,
   History,
@@ -9,6 +10,8 @@ import {
   LogOut,
   Table2,
   ScrollText,
+  MoreHorizontal,
+  X,
 } from 'lucide-react'
 import type { View } from '../types'
 import { useApp } from '../context/AppContext'
@@ -24,6 +27,9 @@ const NAV: { id: View; label: string; icon: typeof Home }[] = [
   { id: 'history', label: 'היסטוריה', icon: History },
 ]
 
+const MOBILE_PRIMARY: View[] = ['home', 'shift', 'workers', 'history']
+const MOBILE_MORE: View[] = ['lanes', 'certs', 'tracking', 'audit']
+
 export function Shell({ children }: { children: React.ReactNode }) {
   const {
     view,
@@ -37,8 +43,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
     user,
     logout,
   } = useApp()
+  const [moreOpen, setMoreOpen] = useState(false)
 
   const go = (id: View) => {
+    setMoreOpen(false)
     if (id === 'shift' && !draft) {
       startShift()
       return
@@ -46,8 +54,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
     setView(id)
   }
 
+  const moreActive = useMemo(() => MOBILE_MORE.includes(view), [view])
+
   return (
-    <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-3.5 pb-20 pt-4 sm:px-6 sm:pt-6 lg:pb-8 lg:pt-8">
+    <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-3.5 pb-24 pt-4 sm:px-6 sm:pt-6 lg:pb-8 lg:pt-8">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-3 animate-fade-up sm:mb-8 sm:gap-4">
         <div>
           <p className="mb-0.5 text-[10px] font-semibold tracking-[0.18em] text-accent uppercase sm:mb-1 sm:text-xs sm:tracking-[0.2em]">
@@ -108,14 +118,14 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   key={id}
                   type="button"
                   onClick={() => go(id)}
-                  className={`flex flex-1 items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-xs font-medium transition xl:gap-2 xl:text-sm ${
                     active
                       ? 'bg-brand text-white shadow-sm'
                       : 'text-ink-soft hover:bg-surface hover:text-ink'
                   }`}
                 >
-                  <Icon className="size-4" />
-                  {label}
+                  <Icon className="size-4 shrink-0" />
+                  <span className="truncate">{label}</span>
                 </button>
               )
             })}
@@ -123,24 +133,84 @@ export function Shell({ children }: { children: React.ReactNode }) {
 
           <main className="flex-1 animate-fade-up stagger-1">{children}</main>
 
-          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 px-1.5 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur lg:hidden">
-            <div className="mx-auto flex max-w-lg justify-around">
-              {NAV.filter((n) => n.id !== 'certs' && n.id !== 'lanes' && n.id !== 'tracking').map(({ id, label, icon: Icon }) => {
-                const active = view === id
-                return (
+          {moreOpen && (
+            <div className="fixed inset-0 z-50 lg:hidden">
+              <button
+                type="button"
+                className="absolute inset-0 bg-ink/40"
+                aria-label="סגור"
+                onClick={() => setMoreOpen(false)}
+              />
+              <div className="absolute inset-x-0 bottom-0 animate-fade-up rounded-t-2xl border border-line bg-card p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl">
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="font-display text-base font-bold text-ink">עוד</h2>
                   <button
-                    key={id}
                     type="button"
-                    onClick={() => go(id)}
-                    className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[9px] font-medium tracking-wide ${
-                      active ? 'text-brand' : 'text-ink-soft'
-                    }`}
+                    onClick={() => setMoreOpen(false)}
+                    className="rounded-lg p-1.5 text-ink-soft hover:bg-surface"
+                    aria-label="סגור"
                   >
-                    <Icon className={`size-[18px] ${active ? 'stroke-[2.25]' : ''}`} />
-                    <span className="truncate">{label}</span>
+                    <X className="size-4" />
                   </button>
-                )
-              })}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {NAV.filter((n) => MOBILE_MORE.includes(n.id)).map(
+                    ({ id, label, icon: Icon }) => {
+                      const active = view === id
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => go(id)}
+                          className={`flex items-center gap-2 rounded-xl border px-3 py-3 text-sm font-semibold transition ${
+                            active
+                              ? 'border-brand bg-brand/10 text-brand'
+                              : 'border-line bg-surface text-ink hover:border-brand/30'
+                          }`}
+                        >
+                          <Icon className="size-5 shrink-0" />
+                          {label}
+                        </button>
+                      )
+                    },
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card/95 px-1 pb-[env(safe-area-inset-bottom)] pt-1.5 backdrop-blur lg:hidden">
+            <div className="mx-auto flex max-w-lg justify-around">
+              {NAV.filter((n) => MOBILE_PRIMARY.includes(n.id)).map(
+                ({ id, label, icon: Icon }) => {
+                  const active = view === id
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => go(id)}
+                      className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] font-semibold tracking-wide ${
+                        active ? 'text-brand' : 'text-ink-soft'
+                      }`}
+                    >
+                      <Icon className={`size-5 ${active ? 'stroke-[2.25]' : ''}`} />
+                      <span className="truncate">{label}</span>
+                    </button>
+                  )
+                },
+              )}
+              <button
+                type="button"
+                onClick={() => setMoreOpen(true)}
+                className={`flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-xl px-0.5 py-1.5 text-[11px] font-semibold tracking-wide ${
+                  moreActive || moreOpen ? 'text-brand' : 'text-ink-soft'
+                }`}
+              >
+                <MoreHorizontal
+                  className={`size-5 ${moreActive || moreOpen ? 'stroke-[2.25]' : ''}`}
+                />
+                <span>עוד</span>
+              </button>
             </div>
           </nav>
         </>

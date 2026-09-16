@@ -98,38 +98,68 @@ export function AuditPage() {
             עדיין אין רשומות. פעולות כמו שמירת שיבוץ, מחיקה, עדכון בודקים/נתיבים ואיפוס יופיעו כאן.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-line">
-            <table className="min-w-full border-collapse text-right text-[11px] sm:text-xs">
-              <thead>
-                <tr className="bg-brand-deep text-white">
-                  <th className="px-2 py-2.5 font-semibold sm:px-3">זמן</th>
-                  <th className="px-2 py-2.5 font-semibold sm:px-3">משתמש</th>
-                  <th className="px-2 py-2.5 font-semibold sm:px-3">פעולה</th>
-                  <th className="px-2 py-2.5 font-semibold sm:px-3">פרטים</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((row, i) => (
-                  <tr key={row.id} className={i % 2 === 0 ? 'bg-card' : 'bg-surface'}>
-                    <td className="whitespace-nowrap border-b border-line px-2 py-2 tabular-nums text-ink-soft sm:px-3">
+          <>
+            {/* Mobile cards */}
+            <ul className="space-y-2 sm:hidden">
+              {filtered.map((row) => (
+                <li
+                  key={row.id}
+                  className="rounded-xl border border-line bg-surface px-3 py-2.5"
+                >
+                  <div className="mb-1 flex flex-wrap items-center justify-between gap-1.5">
+                    <span className="inline-flex rounded-md bg-brand/10 px-1.5 py-0.5 text-[11px] font-semibold text-brand">
+                      {ACTION_LABELS[row.action] ?? row.action}
+                    </span>
+                    <span className="text-[11px] tabular-nums text-ink-soft">
                       {formatWhen(row.at)}
-                    </td>
-                    <td className="border-b border-line px-2 py-2 font-medium text-ink sm:px-3">
-                      {row.actor?.fullName || '—'}
-                    </td>
-                    <td className="border-b border-line px-2 py-2 sm:px-3">
-                      <span className="inline-flex rounded-md bg-brand/10 px-1.5 py-0.5 font-semibold text-brand">
-                        {ACTION_LABELS[row.action] ?? row.action}
-                      </span>
-                    </td>
-                    <td className="border-b border-line px-2 py-2 text-ink-soft sm:px-3">
-                      {row.details || '—'}
-                    </td>
+                    </span>
+                  </div>
+                  <p className="text-sm font-semibold text-ink">
+                    {row.actor?.fullName || '—'}
+                  </p>
+                  {row.details && (
+                    <p className="mt-0.5 text-xs leading-relaxed text-ink-soft">
+                      {row.details}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            {/* Desktop table */}
+            <div className="hidden overflow-x-auto rounded-xl border border-line sm:block">
+              <table className="min-w-full border-collapse text-right text-xs">
+                <thead>
+                  <tr className="bg-brand-deep text-white">
+                    <th className="px-3 py-2.5 font-semibold">זמן</th>
+                    <th className="px-3 py-2.5 font-semibold">משתמש</th>
+                    <th className="px-3 py-2.5 font-semibold">פעולה</th>
+                    <th className="px-3 py-2.5 font-semibold">פרטים</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {filtered.map((row, i) => (
+                    <tr key={row.id} className={i % 2 === 0 ? 'bg-card' : 'bg-surface'}>
+                      <td className="whitespace-nowrap border-b border-line px-3 py-2 tabular-nums text-ink-soft">
+                        {formatWhen(row.at)}
+                      </td>
+                      <td className="border-b border-line px-3 py-2 font-medium text-ink">
+                        {row.actor?.fullName || '—'}
+                      </td>
+                      <td className="border-b border-line px-3 py-2">
+                        <span className="inline-flex rounded-md bg-brand/10 px-1.5 py-0.5 font-semibold text-brand">
+                          {ACTION_LABELS[row.action] ?? row.action}
+                        </span>
+                      </td>
+                      <td className="border-b border-line px-3 py-2 text-ink-soft">
+                        {row.details || '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </SectionCard>
     </div>

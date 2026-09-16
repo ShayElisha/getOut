@@ -358,15 +358,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       id: uuid(),
       date: todayISO(),
       shiftType: defaultShiftType(),
-      activeLaneIds: data.lanes.map((l) => l.id),
-      presentWorkerIds: data.workers.filter((w) => w.status === 'active').map((w) => w.id),
+      activeLaneIds: [],
+      presentWorkerIds: [],
       assignments: [],
       warnings: [],
       unassignedWorkerIds: [],
     })
     setShiftStep('lanes')
     setView('shift')
-  }, [data.lanes, data.workers, setShiftStep, setView])
+  }, [setShiftStep, setView])
 
   const updateDraftMeta = useCallback(
     (patch: Partial<Pick<ShiftDraft, 'date' | 'shiftType'>>) => {

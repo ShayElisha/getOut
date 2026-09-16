@@ -10,6 +10,7 @@ import {
   X,
   Save,
   Plus,
+  ArrowLeftRight,
 } from 'lucide-react'
 import { isQualified, buildSameDayMorningContext, afternoonHandoffTier } from '../algorithm'
 import { useApp } from '../context/AppContext'
@@ -50,6 +51,11 @@ export function ShiftPage() {
   const [pickLaneId, setPickLaneId] = useState('')
   const [pickWorkerId, setPickWorkerId] = useState('')
   const [saveFlash, setSaveFlash] = useState(false)
+  const [swapTarget, setSwapTarget] = useState<{
+    laneId: string
+    slotIndex: number
+    workerId: string
+  } | null>(null)
 
   const exportLines = useMemo(() => {
     if (!draft) return []
@@ -580,7 +586,7 @@ export function ShiftPage() {
                                 {slotIndex + 1}.
                               </span>
                               <select
-                                className={`w-full rounded-lg border px-2.5 py-1.5 text-xs font-medium text-[#0f1c2e] sm:px-3 sm:py-2 sm:text-sm ${
+                                className={`min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium text-[#0f1c2e] sm:px-3 sm:py-2 sm:text-sm ${
                                   selectedLacksCert
                                     ? 'border-warn/50 bg-warn-soft/40'
                                     : isExtra
@@ -618,6 +624,23 @@ export function ShiftPage() {
                                     </option>
                                   )}
                               </select>
+                              {workerId && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setSwapTarget({
+                                      laneId,
+                                      slotIndex,
+                                      workerId,
+                                    })
+                                  }
+                                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#d5dee8] bg-white px-2 py-1.5 text-[10px] font-bold text-[#1a4a6e] hover:border-[#1a4a6e] hover:bg-[#1a4a6e] hover:text-white sm:text-[11px]"
+                                  title="החלף בודק כשיר"
+                                >
+                                  <ArrowLeftRight className="size-3.5" />
+                                  החלף
+                                </button>
+                              )}
                             </div>
                             {selectedLacksCert && (
                               <p className="pr-5 text-[10px] font-medium text-warn sm:pr-6 sm:text-[11px]">
@@ -659,6 +682,107 @@ export function ShiftPage() {
           </button>
         </section>
       )}
+
+      {swapTarget &&
+        (() => {
+          const lane = data.lanes.find((l) => l.id === swapTarget.laneId)
+          const current = data.workers.find((w) => w.id === swapTarget.workerId)
+          if (!lane || !draft) return null
+          const assignedElsewhere = new Set(
+            draft.assignments.flatMap((a) =>
+              a.laneId === swapTarget.laneId
+                ? a.workerIds.filter(
+                    (id, i) => id && !(id === swapTarget.workerId && i === swapTarget.slotIndex),
+                  )
+                : a.workerIds.filter(Boolean),
+            ),
+          )
+          const candidates = data.workers
+            .filter(
+              (w) =>
+                draft.presentWorkerIds.includes(w.id) &&
+                w.id !== swapTarget.workerId &&
+                isQualified(w, lane) &&
+                !assignedElsewhere.has(w.id),
+            )
+            .slice()
+            .sort((a, b) => {
+              if (lane.afternoonHandoff && draft.shiftType === 'afternoon') {
+                const ta = afternoonHandoffTier(a.id, lane.id, morningCtx)
+                const tb = afternoonHandoffTier(b.id, lane.id, morningCtx)
+                if (ta !== tb) return ta - tb
+              }
+              return a.fullName.localeCompare(b.fullName, 'he')
+            })
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-3 sm:items-center sm:p-4">
+              <div
+                role="dialog"
+                aria-modal="true"
+                className="w-full max-w-md animate-fade-up rounded-2xl border border-line bg-card p-4 shadow-xl sm:p-5"
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-8 items-center justify-center rounded-xl bg-brand/10 text-brand">
+                      <ArrowLeftRight className="size-4" />
+                    </span>
+                    <div>
+                      <h3 className="font-display text-base font-bold text-ink">
+                        החלפת בודק
+                      </h3>
+                      <p className="text-xs text-ink-soft">
+                        {lane.name} · {current?.fullName ?? '—'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSwapTarget(null)}
+                    className="rounded-lg p-1.5 text-ink-soft hover:bg-surface"
+                    aria-label="סגור"
+                  >
+                    <X className="size-4" />
+                  </button>
+                </div>
+                <p className="mb-3 text-xs text-ink-soft">
+                  מועמדים כשירים בלבד (הסמכות מלאות ופנויים לשיבוץ)
+                </p>
+                {candidates.length === 0 ? (
+                  <p className="rounded-xl bg-surface px-3 py-3 text-sm text-ink-soft">
+                    אין כרגע מועמדים כשירים פנויים לנתיב זה.
+                  </p>
+                ) : (
+                  <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+                    {candidates.map((w) => (
+                      <li key={w.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateAssignment(
+                              swapTarget.laneId,
+                              swapTarget.slotIndex,
+                              w.id,
+                            )
+                            setSwapTarget(null)
+                          }}
+                          className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-right text-sm font-semibold text-ink transition hover:border-brand hover:bg-brand/5"
+                        >
+                          <span>
+                            {lane.afternoonHandoff && draft.shiftType === 'afternoon'
+                              ? handoffOptionLabel(w.id, w.fullName, lane.id)
+                              : w.fullName}
+                          </span>
+                          <ArrowLeftRight className="size-3.5 shrink-0 text-brand" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )
+        })()}
 
       {extraFlow !== 'closed' && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-3 sm:items-center sm:p-4">

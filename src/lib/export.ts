@@ -9,6 +9,10 @@ export interface ExportLaneLine {
   staffingStandard: number
 }
 
+export interface ExportMeta {
+  preparedBy?: string
+}
+
 function formatDateHe(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number)
   return new Date(y, m - 1, d).toLocaleDateString('he-IL', {
@@ -19,18 +23,17 @@ function formatDateHe(iso: string): string {
   })
 }
 
-const INTENSITY_STYLE: Record<Intensity, { bg: string; color: string }> = {
-  easy: { bg: '#dcfce7', color: '#15803d' },
-  medium: { bg: '#e0f2fe', color: '#0369a1' },
-  hard: { bg: '#ffe4e9', color: '#9f1239' },
+function formatTimeHe(d = new Date()): string {
+  return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
 }
 
-/** Build a plain HTML board (hex only, no selects) for reliable capture */
+/** Official gate document layout (A4-ish, table — not app UI screenshot) */
 function buildExportNode(
   date: string,
   shiftType: ShiftType,
   lines: ExportLaneLine[],
   unassigned: string[],
+  meta: ExportMeta = {},
 ): HTMLDivElement {
   const root = document.createElement('div')
   root.setAttribute('dir', 'rtl')
@@ -38,74 +41,88 @@ function buildExportNode(
     'position:fixed',
     'left:-10000px',
     'top:0',
-    'width:720px',
+    'width:794px',
     'background:#ffffff',
     'color:#0f1c2e',
     "font-family:Heebo,Arial,sans-serif",
-    'border-radius:16px',
-    'overflow:hidden',
-    'border:1px solid #d5dee8',
+    'box-sizing:border-box',
+    'padding:36px 40px 28px',
+    'border:1px solid #c5d0dc',
   ].join(';')
 
-  const header = document.createElement('div')
-  header.style.cssText =
-    'background:linear-gradient(to left,#0f3350,#1a4a6e);padding:20px 24px;color:#ffffff'
-  header.innerHTML = `
-    <div style="font-size:10px;font-weight:700;letter-spacing:0.25em;color:rgba(255,255,255,0.55);margin-bottom:4px">שיבוצון</div>
-    <div style="font-size:22px;font-weight:800">שיבוץ שער יציאה</div>
-    <div style="font-size:14px;margin-top:6px;color:rgba(255,255,255,0.85)">${formatDateHe(date)} · ${SHIFT_TYPE_LABELS[shiftType]}</div>
-  `
-  root.appendChild(header)
+  const issued = formatTimeHe()
+  const by = meta.preparedBy ? escapeHtml(meta.preparedBy) : '—'
 
-  const grid = document.createElement('div')
-  grid.style.cssText =
-    'display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #d5dee8'
-
-  lines.forEach((line, index) => {
-    const cell = document.createElement('div')
-    const borderSide = index % 2 === 0 ? 'border-left:1px solid #d5dee8;' : ''
-    const borderTop = index >= 2 ? 'border-top:1px solid #d5dee8;' : ''
-    cell.style.cssText = `padding:16px;${borderSide}${borderTop}`
-
-    const badge = INTENSITY_STYLE[line.intensity]
-    const extra = line.workers.filter(Boolean).length > line.staffingStandard
-    const names =
-      line.workers.filter(Boolean).length > 0
-        ? line.workers
-            .filter(Boolean)
-            .map(
-              (n, i) =>
-                `<div style="background:#f3f6f9;border:1px solid #d5dee8;border-radius:8px;padding:8px 12px;margin-top:6px;font-size:14px;font-weight:600">${i + 1}. ${escapeHtml(n)}</div>`,
-            )
-            .join('')
-        : `<div style="background:#f3f6f9;border:1px dashed #d5dee8;border-radius:8px;padding:8px 12px;margin-top:6px;font-size:14px;color:#3d4f66">— פנוי —</div>`
-
-    cell.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
-        <div style="font-size:16px;font-weight:800">${escapeHtml(line.laneName)}</div>
-        <div style="display:flex;gap:6px;align-items:center">
-          ${extra ? '<span style="background:#f3e0d4;color:#c45c26;font-size:10px;font-weight:800;padding:2px 8px;border-radius:6px">+תוספת</span>' : ''}
-          <span style="background:${badge.bg};color:${badge.color};font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px">${INTENSITY_LABELS[line.intensity]}</span>
-        </div>
+  root.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;border-bottom:2px solid #0f3350;padding-bottom:14px;margin-bottom:18px">
+      <div>
+        <div style="font-size:11px;font-weight:700;letter-spacing:0.14em;color:#c45c26;text-transform:uppercase">GATE OUT</div>
+        <div style="font-size:26px;font-weight:800;color:#0f3350;margin-top:2px;line-height:1.2">שיבוץ שער יציאה</div>
+        <div style="font-size:14px;color:#3d4f66;margin-top:6px">${formatDateHe(date)}</div>
       </div>
-      ${names}
-    `
-    grid.appendChild(cell)
-  })
+      <div style="text-align:left;font-size:13px;color:#3d4f66;line-height:1.55;min-width:140px">
+        <div><span style="color:#6b7c90">משמרת:</span> <strong style="color:#0f1c2e">${SHIFT_TYPE_LABELS[shiftType]}</strong></div>
+        <div><span style="color:#6b7c90">הופק:</span> ${issued}</div>
+        <div><span style="color:#6b7c90">ע״י:</span> ${by}</div>
+      </div>
+    </div>
+  `
 
-  // Odd last cell — stretch full width look is fine in 2-col grid
-  root.appendChild(grid)
+  const table = document.createElement('table')
+  table.style.cssText =
+    'width:100%;border-collapse:collapse;font-size:14px;margin-top:4px'
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th style="text-align:right;background:#0f3350;color:#fff;padding:10px 12px;font-weight:700;border:1px solid #0f3350;width:28%">נתיב / עמדה</th>
+        <th style="text-align:right;background:#0f3350;color:#fff;padding:10px 12px;font-weight:700;border:1px solid #0f3350;width:14%">עצימות</th>
+        <th style="text-align:right;background:#0f3350;color:#fff;padding:10px 12px;font-weight:700;border:1px solid #0f3350;width:10%">תקן</th>
+        <th style="text-align:right;background:#0f3350;color:#fff;padding:10px 12px;font-weight:700;border:1px solid #0f3350">בודקים משובצים</th>
+      </tr>
+    </thead>
+  `
+  const tbody = document.createElement('tbody')
+  lines.forEach((line, i) => {
+    const names = line.workers.filter(Boolean)
+    const extra = names.length > line.staffingStandard
+    const bg = i % 2 === 0 ? '#ffffff' : '#f5f8fb'
+    const namesHtml = names.length
+      ? names.map((n, idx) => `${idx + 1}. ${escapeHtml(n)}`).join(' &nbsp;·&nbsp; ')
+      : '<span style="color:#6b7c90">— פנוי —</span>'
+    const tr = document.createElement('tr')
+    tr.innerHTML = `
+      <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};font-weight:700;vertical-align:top">
+        ${escapeHtml(line.laneName)}
+        ${extra ? '<div style="margin-top:4px;font-size:11px;font-weight:700;color:#c45c26">+ תוספת מעבר לתקן</div>' : ''}
+      </td>
+      <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};vertical-align:top">${INTENSITY_LABELS[line.intensity]}</td>
+      <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};vertical-align:top;font-variant-numeric:tabular-nums">${line.staffingStandard}</td>
+      <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};vertical-align:top;line-height:1.55">${namesHtml}</td>
+    `
+    tbody.appendChild(tr)
+  })
+  table.appendChild(tbody)
+  root.appendChild(table)
 
   if (unassigned.length > 0) {
-    const footer = document.createElement('div')
-    footer.style.cssText =
-      'border-top:1px solid #d5dee8;background:#f3f6f9;padding:12px 24px'
-    footer.innerHTML = `
-      <div style="font-size:11px;font-weight:800;color:#3d4f66;margin-bottom:4px">לא שובצו</div>
-      <div style="font-size:14px">${unassigned.map(escapeHtml).join(' · ')}</div>
+    const note = document.createElement('div')
+    note.style.cssText =
+      'margin-top:16px;padding:12px 14px;border:1px solid #e8c4b0;background:#fdf6f1;font-size:13px'
+    note.innerHTML = `
+      <div style="font-weight:800;color:#c45c26;margin-bottom:4px">לא שובצו</div>
+      <div style="color:#0f1c2e">${unassigned.map(escapeHtml).join(' · ')}</div>
     `
-    root.appendChild(footer)
+    root.appendChild(note)
   }
+
+  const footer = document.createElement('div')
+  footer.style.cssText =
+    'margin-top:22px;padding-top:12px;border-top:1px solid #d5dee8;display:flex;justify-content:space-between;font-size:11px;color:#6b7c90'
+  footer.innerHTML = `
+    <span>מסמך שיבוץ רשמי · שיבוצון</span>
+    <span>לשימוש פנימי בשער יציאה</span>
+  `
+  root.appendChild(footer)
 
   return root
 }
@@ -123,11 +140,11 @@ export async function captureSchedulePng(
   shiftType: ShiftType,
   lines: ExportLaneLine[],
   unassigned: string[] = [],
+  meta: ExportMeta = {},
 ): Promise<string> {
-  const node = buildExportNode(date, shiftType, lines, unassigned)
+  const node = buildExportNode(date, shiftType, lines, unassigned, meta)
   document.body.appendChild(node)
 
-  // Wait for layout + fonts
   await document.fonts?.ready.catch(() => undefined)
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
 
@@ -152,9 +169,10 @@ export async function downloadBoardImage(
   lines: ExportLaneLine[],
   unassigned: string[] = [],
   filename?: string,
+  meta: ExportMeta = {},
 ): Promise<void> {
-  const dataUrl = await captureSchedulePng(date, shiftType, lines, unassigned)
-  const name = filename ?? `shibutz-${date}-${shiftType}.png`
+  const dataUrl = await captureSchedulePng(date, shiftType, lines, unassigned, meta)
+  const name = filename ?? `shibutz-official-${date}-${shiftType}.png`
   const a = document.createElement('a')
   a.href = dataUrl
   a.download = name
@@ -169,14 +187,14 @@ export function buildWhatsAppText(
   shiftType: ShiftType,
   lines: { laneName: string; workers: string[] }[],
 ): string {
-  const header = `*שיבוץ שער — ${formatDateHe(date)} · ${SHIFT_TYPE_LABELS[shiftType]}*`
+  const header = `*שיבוץ שער יציאה — ${formatDateHe(date)} · ${SHIFT_TYPE_LABELS[shiftType]}*`
   const body = lines
     .map((l) => {
       const names = l.workers.length ? l.workers.join(', ') : '—'
       return `• *${l.laneName}:* ${names}`
     })
     .join('\n')
-  return `${header}\n\n${body}\n\n_נוצר בשיבוצון_`
+  return `${header}\n\n${body}\n\n_מסמך שיבוצון_`
 }
 
 export function openWhatsAppShare(text: string): void {

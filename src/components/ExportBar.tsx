@@ -7,6 +7,7 @@ import {
   type ExportLaneLine,
 } from '../lib/export'
 import type { ShiftType } from '../types'
+import { useApp } from '../context/AppContext'
 
 interface ExportBarProps {
   date: string
@@ -16,17 +17,19 @@ interface ExportBarProps {
 }
 
 export function ExportBar({ date, shiftType, lines, unassigned }: ExportBarProps) {
+  const { user } = useApp()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const meta = { preparedBy: user?.fullName }
 
   const handleDownload = async () => {
     setBusy(true)
     setError(null)
     try {
-      await downloadBoardImage(date, shiftType, lines, unassigned)
+      await downloadBoardImage(date, shiftType, lines, unassigned, undefined, meta)
     } catch (e) {
       console.error(e)
-      setError('ייצוא התמונה נכשל. נסו שוב.')
+      setError('ייצוא המסמך נכשל. נסו שוב.')
     } finally {
       setBusy(false)
     }
@@ -36,10 +39,10 @@ export function ExportBar({ date, shiftType, lines, unassigned }: ExportBarProps
     setBusy(true)
     setError(null)
     try {
-      await downloadBoardImage(date, shiftType, lines, unassigned)
+      await downloadBoardImage(date, shiftType, lines, unassigned, undefined, meta)
     } catch (e) {
       console.error(e)
-      setError('הורדת התמונה נכשלה — נפתח שיתוף טקסט בלבד.')
+      setError('הורדת המסמך נכשלה — נפתח שיתוף טקסט בלבד.')
     } finally {
       setBusy(false)
       openWhatsAppShare(
@@ -66,7 +69,7 @@ export function ExportBar({ date, shiftType, lines, unassigned }: ExportBarProps
           ) : (
             <Download className="size-3.5 sm:size-4" />
           )}
-          ייצוא תמונה
+          ייצוא מסמך
         </button>
         <button
           type="button"
