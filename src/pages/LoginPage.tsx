@@ -47,7 +47,7 @@ function PasswordField({
       <div className="relative">
         <input
           id={id}
-          className="ui-field pe-11"
+          className="ui-field ps-11"
           type={show ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -61,7 +61,7 @@ function PasswordField({
         <button
           type="button"
           onClick={onToggleShow}
-          className="absolute inset-y-0 end-0 flex items-center px-3 text-ink-soft hover:text-brand"
+          className="absolute inset-y-0 start-0 flex items-center px-3 text-ink-soft hover:text-brand"
           aria-label={show ? 'הסתר סיסמה' : 'הצג סיסמה'}
         >
           {show ? (
