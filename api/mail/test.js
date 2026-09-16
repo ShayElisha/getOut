@@ -1,5 +1,5 @@
-import { sendTestEmail } from '../server/mail.js'
-import { requireUser } from '../server/session.js'
+import { sendTestEmail } from '../../server/mail.js'
+import { requireUser } from '../../server/session.js'
 
 /** Authenticated smoke-test: POST /api/mail/test  body: { to?: string } */
 export default async function handler(req, res) {

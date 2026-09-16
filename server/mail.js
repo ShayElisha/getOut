@@ -8,7 +8,9 @@ import {
 
 function smtpConfigured() {
   return Boolean(
-    process.env.SMTP_HOST && (process.env.SMTP_FROM || process.env.SMTP_USER),
+    String(process.env.SMTP_HOST || '').trim() &&
+      smtpUser() &&
+      smtpPass(),
   )
 }
 
@@ -45,10 +47,11 @@ export async function sendMail({ to, subject, text, html, attachments }) {
     throw err
   }
   if (!smtpConfigured()) {
-    console.warn(
-      `[mail] SMTP לא מוגדר — המייל לא נשלח אל ${to}\nנושא: ${subject}\n${text}`,
+    const err = new Error(
+      'שליחת מייל אינה מוגדרת בשרת — יש להגדיר SMTP_HOST, SMTP_USER ו־SMTP_PASS ב-Vercel',
     )
-    return { queued: false, devLogged: true }
+    err.status = 503
+    throw err
   }
 
   const from =
@@ -83,6 +86,10 @@ export async function sendMail({ to, subject, text, html, attachments }) {
 }
 
 function withLogoAttachments() {
+  // On Vercel use hosted /gate-out-logo.png (via APP_URL / VERCEL_URL) — no CID file needed.
+  if (process.env.VERCEL || process.env.VERCEL_URL || process.env.APP_URL) {
+    return []
+  }
   const logo = logoAttachment()
   return logo ? [logo] : []
 }

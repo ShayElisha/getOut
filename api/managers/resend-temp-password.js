@@ -1,6 +1,6 @@
-import { resendManagerTempPassword } from '../server/data.js'
-import { assertRateLimit, clientKey } from '../server/rateLimit.js'
-import { requireUser } from '../server/session.js'
+import { resendManagerTempPassword } from '../../server/data.js'
+import { assertRateLimit, clientKey } from '../../server/rateLimit.js'
+import { requireUser } from '../../server/session.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
