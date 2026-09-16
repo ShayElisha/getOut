@@ -81,7 +81,9 @@ interface AppContextValue {
     phone: string,
   ) => Promise<'login' | 'change_password' | 'await_email'>
   requestPasswordReset: (phone: string) => Promise<string>
-  resendManagerTempPassword: (workerId: string) => Promise<void>
+  resendManagerTempPassword: (
+    workerId: string,
+  ) => Promise<{ sentTo?: string; tempPassword?: string }>
   logout: () => void
   view: View
   setView: (v: View) => void
@@ -414,7 +416,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const resendManagerTempPassword = useCallback(async (workerId: string) => {
-    await resendManagerTempPasswordRemote(workerId)
+    const result = await resendManagerTempPasswordRemote(workerId)
+    return {
+      sentTo: result.sentTo,
+      tempPassword: result.tempPassword,
+    }
   }, [])
 
   const logout = useCallback(() => {
