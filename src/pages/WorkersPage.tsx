@@ -61,7 +61,7 @@ export function WorkersPage() {
     if (
       !checked &&
       form.isManager &&
-      !confirm('האם הינך בטוח להוריד ממנהלות?')
+      !confirm('האם הינך בטוח להוריד מניהול?')
     ) {
       return
     }
