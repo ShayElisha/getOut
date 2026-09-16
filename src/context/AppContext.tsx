@@ -100,6 +100,11 @@ interface AppContextValue {
   setAllActiveWorkers: (on: boolean) => void
   runAutoAssign: () => void
   updateAssignment: (laneId: string, slotIndex: number, workerId: string | null) => void
+  /** Swap two filled slots between lanes (or within the same lane). */
+  swapAssignments: (
+    a: { laneId: string; slotIndex: number },
+    b: { laneId: string; slotIndex: number },
+  ) => void
   updateLaneNotes: (laneId: string, notes: string) => void
   addExtraWorkerToLane: (laneId: string, workerId: string) => void
   addSlotToLane: (laneId: string) => void
@@ -646,6 +651,50 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [data.lanes],
   )
 
+  const swapAssignments = useCallback(
+    (
+      a: { laneId: string; slotIndex: number },
+      b: { laneId: string; slotIndex: number },
+    ) => {
+      setDraft((d) => {
+        if (!d) return d
+        if (a.laneId === b.laneId && a.slotIndex === b.slotIndex) return d
+        const padded = padAssignments(d.assignments, data.lanes, d.activeLaneIds).map(
+          (row) => ({ ...row, workerIds: [...row.workerIds] }),
+        )
+        const laneA = padded.find((row) => row.laneId === a.laneId)
+        const laneB = padded.find((row) => row.laneId === b.laneId)
+        if (!laneA || !laneB) return d
+        while (laneA.workerIds.length <= a.slotIndex) laneA.workerIds.push('')
+        while (laneB.workerIds.length <= b.slotIndex) laneB.workerIds.push('')
+        const tmp = laneA.workerIds[a.slotIndex] || ''
+        laneA.workerIds[a.slotIndex] = laneB.workerIds[b.slotIndex] || ''
+        laneB.workerIds[b.slotIndex] = tmp
+
+        const trimTrailing = (row: (typeof padded)[number]) => {
+          const lane = data.lanes.find((l) => l.id === row.laneId)
+          const std = lane?.staffingStandard ?? 1
+          while (
+            row.workerIds.length > std &&
+            !row.workerIds[row.workerIds.length - 1]
+          ) {
+            row.workerIds.pop()
+          }
+        }
+        trimTrailing(laneA)
+        trimTrailing(laneB)
+
+        const assignedIds = new Set(padded.flatMap((row) => row.workerIds.filter(Boolean)))
+        return {
+          ...d,
+          assignments: padded,
+          unassignedWorkerIds: d.presentWorkerIds.filter((id) => !assignedIds.has(id)),
+        }
+      })
+    },
+    [data.lanes],
+  )
+
   const updateLaneNotes = useCallback(
     (laneId: string, notes: string) => {
       setDraft((d) => {
@@ -905,6 +954,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllActiveWorkers,
       runAutoAssign,
       updateAssignment,
+      swapAssignments,
       updateLaneNotes,
       addExtraWorkerToLane,
       addSlotToLane,
@@ -949,6 +999,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllActiveWorkers,
       runAutoAssign,
       updateAssignment,
+      swapAssignments,
       updateLaneNotes,
       addExtraWorkerToLane,
       addSlotToLane,

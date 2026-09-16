@@ -40,6 +40,7 @@ export function ShiftPage() {
     setAllActiveWorkers,
     runAutoAssign,
     updateAssignment,
+    swapAssignments,
     addExtraWorkerToLane,
     addSlotToLane,
     saveCurrentShift,
@@ -648,7 +649,7 @@ export function ShiftPage() {
                                     })
                                   }
                                   className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#d5dee8] bg-white px-2 py-1.5 text-[10px] font-bold text-[#1a4a6e] hover:border-[#1a4a6e] hover:bg-[#1a4a6e] hover:text-white sm:text-[11px]"
-                                  title="החלף בודק כשיר"
+                                  title="החלף עם נתיב אחר"
                                 >
                                   <ArrowLeftRight className="size-3.5" />
                                   החלף
@@ -713,32 +714,50 @@ export function ShiftPage() {
           const lane = data.lanes.find((l) => l.id === swapTarget.laneId)
           const current = data.workers.find((w) => w.id === swapTarget.workerId)
           if (!lane || !draft) return null
-          const assignedElsewhere = new Set(
-            draft.assignments.flatMap((a) =>
-              a.laneId === swapTarget.laneId
-                ? a.workerIds.filter(
-                    (id, i) => id && !(id === swapTarget.workerId && i === swapTarget.slotIndex),
-                  )
-                : a.workerIds.filter(Boolean),
-            ),
-          )
-          const candidates = data.workers
-            .filter(
-              (w) =>
-                draft.presentWorkerIds.includes(w.id) &&
-                w.id !== swapTarget.workerId &&
-                isQualified(w, lane) &&
-                !assignedElsewhere.has(w.id),
-            )
-            .slice()
-            .sort((a, b) => {
-              if (lane.afternoonHandoff && draft.shiftType === 'afternoon') {
-                const ta = afternoonHandoffTier(a.id, lane.id, morningCtx)
-                const tb = afternoonHandoffTier(b.id, lane.id, morningCtx)
-                if (ta !== tb) return ta - tb
+
+          type SwapOption = {
+            laneId: string
+            slotIndex: number
+            workerId: string
+            laneName: string
+            workerName: string
+            lacksCertHere: boolean
+            currentLacksThere: boolean
+          }
+
+          const options: SwapOption[] = []
+          for (const otherLaneId of draft.activeLaneIds) {
+            const otherLane = data.lanes.find((l) => l.id === otherLaneId)
+            if (!otherLane) continue
+            const assignment = draft.assignments.find((a) => a.laneId === otherLaneId)
+            const slots = assignment?.workerIds ?? []
+            slots.forEach((wid, slotIndex) => {
+              if (!wid) return
+              if (
+                otherLaneId === swapTarget.laneId &&
+                slotIndex === swapTarget.slotIndex
+              ) {
+                return
               }
-              return a.fullName.localeCompare(b.fullName, 'he')
+              const otherWorker = data.workers.find((w) => w.id === wid)
+              options.push({
+                laneId: otherLaneId,
+                slotIndex,
+                workerId: wid,
+                laneName: otherLane.name,
+                workerName: otherWorker?.fullName ?? wid,
+                lacksCertHere: otherWorker ? !isQualified(otherWorker, lane) : false,
+                currentLacksThere: current
+                  ? !isQualified(current, otherLane)
+                  : false,
+              })
             })
+          }
+          options.sort((a, b) => {
+            const byLane = a.laneName.localeCompare(b.laneName, 'he')
+            if (byLane !== 0) return byLane
+            return a.slotIndex - b.slotIndex
+          })
 
           return (
             <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-3 sm:items-center sm:p-4">
@@ -754,7 +773,7 @@ export function ShiftPage() {
                     </span>
                     <div>
                       <h3 className="font-display text-base font-bold text-ink">
-                        החלפת בודק
+                        החלפה בין נתיבים
                       </h3>
                       <p className="text-xs text-ink-soft">
                         {lane.name} · {current?.fullName ?? '—'}
@@ -771,32 +790,48 @@ export function ShiftPage() {
                   </button>
                 </div>
                 <p className="mb-3 text-xs text-ink-soft">
-                  מועמדים כשירים בלבד (הסמכות מלאות ופנויים לשיבוץ)
+                  בחרו נתיב להחלפה ישירה — הבודקים יחליפו מקומות
                 </p>
-                {candidates.length === 0 ? (
+                {options.length === 0 ? (
                   <p className="rounded-xl bg-surface px-3 py-3 text-sm text-ink-soft">
-                    אין כרגע מועמדים כשירים פנויים לנתיב זה.
+                    אין כרגע בודקים משובצים בנתיבים אחרים להחלפה.
                   </p>
                 ) : (
-                  <ul className="max-h-64 space-y-1.5 overflow-y-auto">
-                    {candidates.map((w) => (
-                      <li key={w.id}>
+                  <ul className="max-h-72 space-y-1.5 overflow-y-auto">
+                    {options.map((opt) => (
+                      <li key={`${opt.laneId}-${opt.slotIndex}`}>
                         <button
                           type="button"
                           onClick={() => {
-                            updateAssignment(
-                              swapTarget.laneId,
-                              swapTarget.slotIndex,
-                              w.id,
+                            swapAssignments(
+                              {
+                                laneId: swapTarget.laneId,
+                                slotIndex: swapTarget.slotIndex,
+                              },
+                              {
+                                laneId: opt.laneId,
+                                slotIndex: opt.slotIndex,
+                              },
                             )
                             setSwapTarget(null)
                           }}
-                          className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-right text-sm font-semibold text-ink transition hover:border-brand hover:bg-brand/5"
+                          className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3 py-2.5 text-right transition hover:border-brand hover:bg-brand/5"
                         >
-                          <span>
-                            {lane.afternoonHandoff && draft.shiftType === 'afternoon'
-                              ? handoffOptionLabel(w.id, w.fullName, lane.id)
-                              : w.fullName}
+                          <span className="min-w-0">
+                            <span className="block text-sm font-bold text-ink">
+                              {opt.laneName}
+                              <span className="mx-1.5 font-normal text-ink-soft">·</span>
+                              {opt.workerName}
+                            </span>
+                            {(opt.lacksCertHere || opt.currentLacksThere) && (
+                              <span className="mt-0.5 block text-[10px] font-medium text-warn">
+                                {opt.lacksCertHere && opt.currentLacksThere
+                                  ? 'שימו לב: לשני הבודקים חסרה הסמכה מלאה אחרי ההחלפה'
+                                  : opt.lacksCertHere
+                                    ? `שימו לב: ל${opt.workerName} חסרה הסמכה מלאה ל${lane.name}`
+                                    : `שימו לב: ל${current?.fullName ?? 'הבודק'} חסרה הסמכה מלאה ל${opt.laneName}`}
+                              </span>
+                            )}
                           </span>
                           <ArrowLeftRight className="size-3.5 shrink-0 text-brand" />
                         </button>
