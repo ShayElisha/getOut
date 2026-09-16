@@ -57,8 +57,15 @@ export function WorkersPage() {
     close()
   }
 
-  const toggleManager = (w: Worker) => {
-    updateWorker({ ...w, isManager: !w.isManager })
+  const onManagerChange = (checked: boolean) => {
+    if (
+      !checked &&
+      form.isManager &&
+      !confirm('האם הינך בטוח להוריד ממנהלות?')
+    ) {
+      return
+    }
+    setForm({ ...form, isManager: checked })
   }
 
   const formPanel = (title: string) => (
@@ -100,7 +107,7 @@ export function WorkersPage() {
             type="checkbox"
             className="size-4 rounded border-line"
             checked={form.isManager}
-            onChange={(e) => setForm({ ...form, isManager: e.target.checked })}
+            onChange={(e) => onManagerChange(e.target.checked)}
           />
           מנהל (יכול להתחבר למערכת)
         </label>
@@ -150,7 +157,7 @@ export function WorkersPage() {
     <div className="space-y-4">
       <SectionCard
         title="מאגר בודקים"
-        subtitle="שמות, טלפון, הסמכות וסטטוס · סמנו מנהל להתחברות"
+        subtitle="שמות, טלפון, הסמכות וסטטוס · הרשאת מנהל בעריכה בלבד"
         actions={
           <button
             type="button"
@@ -175,15 +182,11 @@ export function WorkersPage() {
                       <span className="text-sm font-semibold text-ink sm:text-base">
                         {w.fullName}
                       </span>
-                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md bg-surface px-2 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
-                        <input
-                          type="checkbox"
-                          className="size-3.5 rounded border-line"
-                          checked={Boolean(w.isManager)}
-                          onChange={() => toggleManager(w)}
-                        />
-                        מנהל
-                      </label>
+                      {w.isManager && (
+                        <span className="rounded-md bg-accent-soft px-2 py-0.5 text-[10px] font-bold text-accent">
+                          מנהל
+                        </span>
+                      )}
                       <span
                         className={`rounded-md px-2 py-0.5 text-[10px] font-bold ${
                           w.status === 'active'
