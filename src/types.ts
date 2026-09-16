@@ -58,7 +58,6 @@ export type View =
   | 'workers'
   | 'lanes'
   | 'history'
-  | 'historyMatrix'
   | 'tracking'
   | 'analytics'
   | 'audit'

@@ -8,7 +8,6 @@ import { WorkersPage } from './pages/WorkersPage'
 import { LanesPage } from './pages/LanesPage'
 import { CertsPage } from './pages/CertsPage'
 import { HistoryPage } from './pages/HistoryPage'
-import { HistoryMatrixPage } from './pages/HistoryMatrixPage'
 import { TrackingPage } from './pages/TrackingPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { AuditPage } from './pages/AuditPage'
@@ -35,7 +34,7 @@ function ProtectedShell() {
         <Route path="audit" element={<AuditPage />} />
         <Route path="history" element={<HistoryPage />} />
         <Route path="history/:shiftId" element={<HistoryPage />} />
-        <Route path="history-matrix" element={<HistoryMatrixPage />} />
+        <Route path="history-matrix" element={<Navigate to="/history" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>
