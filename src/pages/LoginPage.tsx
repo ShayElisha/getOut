@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { LogIn } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { AppFooter } from '../components/AppFooter'
 
 export function LoginPage() {
   const { login } = useApp()
@@ -65,6 +66,8 @@ export function LoginPage() {
           </button>
         </form>
       </div>
+
+      <AppFooter className="mt-8" />
     </div>
   )
 }

@@ -20,9 +20,11 @@ export function buildTrackingCsv(
   const header = [
     'בודק',
     ...lanes.map((l) => l.name),
-    'קל',
+    'קל יום',
+    'קל לילה',
     'בינוני',
     'קשה',
+    'עומס אפקטיבי',
     'סה״כ',
   ]
 
@@ -31,9 +33,11 @@ export function buildTrackingCsv(
     return [
       w.fullName,
       ...lanes.map((l) => s?.byLane[l.id] ?? 0),
-      s?.easyCount ?? 0,
+      s?.dayEasyCount ?? 0,
+      s?.nightEasyCount ?? 0,
       s?.mediumCount ?? 0,
       s?.hardCount ?? 0,
+      s?.effectiveLoad ?? 0,
       s?.totalAssignments ?? 0,
     ]
   })

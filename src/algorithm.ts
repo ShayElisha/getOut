@@ -1,4 +1,7 @@
-import { INTENSITY_SCORE } from './constants'
+import {
+  countsAsDayEasy,
+  effectiveIntensityScore,
+} from './constants'
 import type {
   Intensity,
   Lane,
@@ -28,11 +31,25 @@ export interface WorkerLaneStats {
   byLane: Record<string, number>
   hardCount: number
   mediumCount: number
+  /** Raw easy lane placements (includes night easy) */
   easyCount: number
+  /** Easy only on morning/afternoon — real "rest" credit */
+  dayEasyCount: number
+  /** Easy placements on night (not treated as rest) */
+  nightEasyCount: number
+  /** Weighted load (night × multiplier; night-easy ≈ medium) */
+  effectiveLoad: number
+  hardByShift: Record<ShiftType, number>
   totalAssignments: number
 }
 
 const DEFAULT_LOOKBACK_DAYS = 14
+
+const EMPTY_HARD_BY_SHIFT: Record<ShiftType, number> = {
+  morning: 0,
+  afternoon: 0,
+  night: 0,
+}
 
 function shuffle<T>(arr: T[]): T[] {
   const copy = [...arr]
@@ -77,9 +94,15 @@ export function isQualified(worker: Worker, lane: Lane): boolean {
 }
 
 interface WorkerHistoryProfile {
+  /** Effective load across all shifts */
   load: number
+  /** Effective load only in the current shift type */
+  loadInSameShiftType: number
   hardCount: number
   hardInSameShiftType: number
+  /** Easy credit only morning/afternoon */
+  dayEasyCount: number
+  dayEasyInSameShiftType: number
   laneCounts: Map<string, number>
   lastLaneIds: Set<string>
   laneRecency: Map<string, number>
@@ -97,8 +120,11 @@ function buildWorkerProfile(
   const laneMap = new Map(lanes.map((l) => [l.id, l]))
   const profile: WorkerHistoryProfile = {
     load: 0,
+    loadInSameShiftType: 0,
     hardCount: 0,
     hardInSameShiftType: 0,
+    dayEasyCount: 0,
+    dayEasyInSameShiftType: 0,
     laneCounts: new Map(),
     lastLaneIds: new Set(),
     laneRecency: new Map(),
@@ -120,11 +146,24 @@ function buildWorkerProfile(
       if (!profile.laneRecency.has(lane.id)) {
         profile.laneRecency.set(lane.id, shiftIndex)
       }
-      profile.load += INTENSITY_SCORE[lane.intensity]
+
+      const points = effectiveIntensityScore(lane.intensity, shift.shiftType)
+      profile.load += points
+      if (shift.shiftType === currentShiftType) {
+        profile.loadInSameShiftType += points
+      }
+
       if (lane.intensity === 'hard') {
         profile.hardCount += 1
         if (shift.shiftType === currentShiftType) {
           profile.hardInSameShiftType += 1
+        }
+      }
+
+      if (countsAsDayEasy(lane.intensity, shift.shiftType)) {
+        profile.dayEasyCount += 1
+        if (shift.shiftType === currentShiftType) {
+          profile.dayEasyInSameShiftType += 1
         }
       }
     }
@@ -145,11 +184,9 @@ function buildWorkerProfile(
   return profile
 }
 
-function needsEasyAfterNight(
-  profile: WorkerHistoryProfile,
-  currentShiftType: ShiftType,
-): boolean {
-  return currentShiftType === 'afternoon' && profile.lastShiftType === 'night'
+/** Most recent placement was a night shift → next shift should avoid hard */
+function cameFromNight(profile: WorkerHistoryProfile): boolean {
+  return profile.lastShiftType === 'night'
 }
 
 export function computeWorkerLoad(
@@ -169,7 +206,7 @@ export function computeWorkerLoad(
       if (!assignment.workerIds.includes(workerId)) continue
       const lane = laneMap.get(assignment.laneId)
       if (!lane) continue
-      load += INTENSITY_SCORE[lane.intensity]
+      load += effectiveIntensityScore(lane.intensity, shift.shiftType)
       placed = true
     }
     if (placed) counted += 1
@@ -263,6 +300,16 @@ function compareForLane(
     if (ta !== tb) return ta - tb
   }
 
+  // After night: strongly prefer easy, strongly avoid hard
+  const aNight = cameFromNight(pa) ? 1 : 0
+  const bNight = cameFromNight(pb) ? 1 : 0
+  if (aNight !== bNight) {
+    if (lane.intensity === 'hard') return aNight - bNight
+    if (lane.intensity === 'easy') return bNight - aNight
+    // medium: mild preference for recovering from night
+    return bNight - aNight
+  }
+
   const aWasLastHere = pa.lastLaneIds.has(lane.id) ? 1 : 0
   const bWasLastHere = pb.lastLaneIds.has(lane.id) ? 1 : 0
   if (aWasLastHere !== bWasLastHere) return aWasLastHere - bWasLastHere
@@ -275,14 +322,6 @@ function compareForLane(
   const bRecency = pb.laneRecency.get(lane.id) ?? Number.POSITIVE_INFINITY
   if (aRecency !== bRecency) return bRecency - aRecency
 
-  const aAfterNight = needsEasyAfterNight(pa, currentShiftType) ? 1 : 0
-  const bAfterNight = needsEasyAfterNight(pb, currentShiftType) ? 1 : 0
-  if (aAfterNight !== bAfterNight) {
-    if (lane.intensity === 'easy') return bAfterNight - aAfterNight
-    if (lane.intensity === 'hard') return aAfterNight - bAfterNight
-    return bAfterNight - aAfterNight
-  }
-
   if (lane.intensity === 'hard') {
     if (pa.lastWasHard !== pb.lastWasHard) {
       return (pa.lastWasHard ? 1 : 0) - (pb.lastWasHard ? 1 : 0)
@@ -291,15 +330,34 @@ function compareForLane(
       return pa.hardInSameShiftType - pb.hardInSameShiftType
     }
     if (pa.hardCount !== pb.hardCount) return pa.hardCount - pb.hardCount
+    if (pa.loadInSameShiftType !== pb.loadInSameShiftType) {
+      return pa.loadInSameShiftType - pb.loadInSameShiftType
+    }
     if (pa.load !== pb.load) return pa.load - pb.load
   } else if (lane.intensity === 'easy') {
+    // Prefer those with more hard / load and fewer day-easy credits
     if (pa.lastWasHard !== pb.lastWasHard) {
       return (pb.lastWasHard ? 1 : 0) - (pa.lastWasHard ? 1 : 0)
     }
+    if (pa.dayEasyInSameShiftType !== pb.dayEasyInSameShiftType) {
+      return pa.dayEasyInSameShiftType - pb.dayEasyInSameShiftType
+    }
+    if (pa.dayEasyCount !== pb.dayEasyCount) {
+      return pa.dayEasyCount - pb.dayEasyCount
+    }
     if (pa.hardCount !== pb.hardCount) return pb.hardCount - pa.hardCount
+    if (pa.loadInSameShiftType !== pb.loadInSameShiftType) {
+      return pb.loadInSameShiftType - pa.loadInSameShiftType
+    }
     if (pa.load !== pb.load) return pb.load - pa.load
   } else {
+    if (pa.hardInSameShiftType !== pb.hardInSameShiftType) {
+      return pa.hardInSameShiftType - pb.hardInSameShiftType
+    }
     if (pa.hardCount !== pb.hardCount) return pa.hardCount - pb.hardCount
+    if (pa.loadInSameShiftType !== pb.loadInSameShiftType) {
+      return pa.loadInSameShiftType - pb.loadInSameShiftType
+    }
     if (pa.load !== pb.load) return pa.load - pb.load
   }
 
@@ -386,7 +444,19 @@ export function runAssignmentAlgorithm(
       continue
     }
 
-    const ranked = shuffle(candidates).sort((a, b) =>
+    // Hard after night: prefer non-night recoverees; warn if forced
+    let pool = candidates
+    if (lane.intensity === 'hard') {
+      const rested = candidates.filter((w) => !cameFromNight(profiles.get(w.id)!))
+      if (rested.length >= lane.staffingStandard) {
+        pool = rested
+      } else if (rested.length > 0 && rested.length < candidates.length) {
+        // Prefer rested first by sorting; still allow night recoverees if needed
+        pool = candidates
+      }
+    }
+
+    const ranked = shuffle(pool).sort((a, b) =>
       compareForLane(
         a,
         b,
@@ -404,6 +474,17 @@ export function runAssignmentAlgorithm(
     for (const id of picked) available.delete(id)
 
     assignments.push({ laneId: lane.id, workerIds: picked })
+
+    if (lane.intensity === 'hard') {
+      for (const id of picked) {
+        const name = workerById.get(id)?.fullName ?? id
+        if (cameFromNight(profiles.get(id)!)) {
+          warnings.push(
+            `אחרי לילה → קשה: "${name}" שובץ בנתיב "${lane.name}" (אין מספיק מועמדים אחרים)`,
+          )
+        }
+      }
+    }
 
     if (
       lane.afternoonHandoff &&
@@ -476,7 +557,11 @@ export function computeWorkerLaneStats(
     let hardCount = 0
     let mediumCount = 0
     let easyCount = 0
+    let dayEasyCount = 0
+    let nightEasyCount = 0
+    let effectiveLoad = 0
     let totalAssignments = 0
+    const hardByShift: Record<ShiftType, number> = { ...EMPTY_HARD_BY_SHIFT }
 
     for (const shift of filtered) {
       for (const assignment of shift.assignments) {
@@ -485,9 +570,19 @@ export function computeWorkerLaneStats(
         totalAssignments += 1
         const lane = laneMap.get(assignment.laneId)
         if (!lane) continue
-        if (lane.intensity === 'hard') hardCount += 1
-        else if (lane.intensity === 'medium') mediumCount += 1
-        else easyCount += 1
+
+        effectiveLoad += effectiveIntensityScore(lane.intensity, shift.shiftType)
+
+        if (lane.intensity === 'hard') {
+          hardCount += 1
+          hardByShift[shift.shiftType] += 1
+        } else if (lane.intensity === 'medium') {
+          mediumCount += 1
+        } else {
+          easyCount += 1
+          if (shift.shiftType === 'night') nightEasyCount += 1
+          else dayEasyCount += 1
+        }
       }
     }
 
@@ -497,6 +592,10 @@ export function computeWorkerLaneStats(
       hardCount,
       mediumCount,
       easyCount,
+      dayEasyCount,
+      nightEasyCount,
+      effectiveLoad: Math.round(effectiveLoad * 10) / 10,
+      hardByShift,
       totalAssignments,
     }
   })

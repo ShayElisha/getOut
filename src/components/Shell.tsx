@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 import type { View } from '../types'
 import { useApp } from '../context/AppContext'
+import { AppFooter } from './AppFooter'
 
 const NAV: { id: View; label: string; icon: typeof Home }[] = [
   { id: 'home', label: 'ראשי', icon: Home },
@@ -141,6 +142,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </nav>
 
           <main className="flex-1 animate-fade-up stagger-1">{children}</main>
+
+          <AppFooter className="mb-2 mt-8 sm:mt-10 lg:mb-0" />
 
           {moreOpen && (
             <div className="fixed inset-0 z-50 lg:hidden">

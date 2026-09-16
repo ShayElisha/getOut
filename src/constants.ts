@@ -12,6 +12,39 @@ export const INTENSITY_SCORE: Record<Intensity, number> = {
   hard: 3,
 }
 
+/**
+ * Night shifts weigh heavier: an "easy" night post is not a real rest day.
+ * Multipliers apply on top of effectiveIntensityScore().
+ */
+export const SHIFT_LOAD_MULTIPLIER: Record<ShiftType, number> = {
+  morning: 1,
+  afternoon: 1,
+  night: 1.75,
+}
+
+/**
+ * Effective workload points for fairness.
+ * Night + easy counts as medium before the night multiplier (no day-easy credit).
+ */
+export function effectiveIntensityScore(
+  intensity: Intensity,
+  shiftType: ShiftType,
+): number {
+  const base =
+    shiftType === 'night' && intensity === 'easy'
+      ? INTENSITY_SCORE.medium
+      : INTENSITY_SCORE[intensity]
+  return base * SHIFT_LOAD_MULTIPLIER[shiftType]
+}
+
+/** True only when an easy lane on a day shift (morning/afternoon) */
+export function countsAsDayEasy(
+  intensity: Intensity,
+  shiftType: ShiftType,
+): boolean {
+  return intensity === 'easy' && shiftType !== 'night'
+}
+
 export const SHIFT_TYPE_LABELS: Record<ShiftType, string> = {
   morning: 'בוקר',
   afternoon: 'צהריים',

@@ -217,7 +217,7 @@ export function TrackingPage() {
                     </div>
                     <div className="mb-2 flex flex-wrap gap-1.5 text-[10px]">
                       <span className="rounded-md bg-easy-soft px-1.5 py-0.5 font-semibold text-easy">
-                        קל {s.easyCount || 0}
+                        קל יום {s.dayEasyCount || 0}
                       </span>
                       <span className="rounded-md bg-mid-soft px-1.5 py-0.5 font-semibold text-mid">
                         בינוני {s.mediumCount || 0}
@@ -225,6 +225,14 @@ export function TrackingPage() {
                       <span className="rounded-md bg-hard-soft px-1.5 py-0.5 font-semibold text-hard">
                         קשה {s.hardCount || 0}
                       </span>
+                      <span className="rounded-md bg-surface px-1.5 py-0.5 font-semibold text-ink-soft ring-1 ring-line">
+                        עומס {s.effectiveLoad || 0}
+                      </span>
+                      {s.nightEasyCount > 0 && (
+                        <span className="rounded-md bg-surface px-1.5 py-0.5 font-medium text-ink-soft ring-1 ring-line">
+                          קל לילה {s.nightEasyCount}
+                        </span>
+                      )}
                     </div>
                     {topLanes.length > 0 ? (
                       <ul className="space-y-1 text-[11px] text-ink-soft">
@@ -238,9 +246,9 @@ export function TrackingPage() {
                     ) : (
                       <p className="text-[11px] text-ink-soft">אין שיבוצים בטווח</p>
                     )}
-                    {s.hardCount >= 3 && s.hardCount > s.easyCount && (
+                    {s.hardCount >= 3 && s.hardCount > s.dayEasyCount && (
                       <p className="mt-1.5 text-[10px] font-semibold text-accent">
-                        עומס קשה גבוה יחסית
+                        עומס קשה גבוה יחסית (קל לילה לא נספר כמנוחה)
                       </p>
                     )}
                   </li>
@@ -268,7 +276,7 @@ export function TrackingPage() {
                       </th>
                     ))}
                     <th className="min-w-[3rem] px-2 py-2 font-semibold text-easy-soft">
-                      קל
+                      קל יום
                     </th>
                     <th className="min-w-[3rem] px-2 py-2 font-semibold text-mid-soft">
                       בינוני
@@ -276,6 +284,7 @@ export function TrackingPage() {
                     <th className="min-w-[3rem] px-2 py-2 font-semibold text-hard-soft">
                       קשה
                     </th>
+                    <th className="min-w-[3.5rem] px-2 py-2 font-semibold">עומס</th>
                     <th className="min-w-[3rem] px-3 py-2 font-semibold">סה״כ</th>
                   </tr>
                 </thead>
@@ -302,13 +311,16 @@ export function TrackingPage() {
                           )
                         })}
                         <td className="border-b border-line px-2 py-2 text-center tabular-nums text-easy">
-                          {s.easyCount || '—'}
+                          {s.dayEasyCount || '—'}
                         </td>
                         <td className="border-b border-line px-2 py-2 text-center tabular-nums text-mid">
                           {s.mediumCount || '—'}
                         </td>
                         <td className="border-b border-line px-2 py-2 text-center tabular-nums text-hard">
                           {s.hardCount || '—'}
+                        </td>
+                        <td className="border-b border-line px-2 py-2 text-center tabular-nums text-ink">
+                          {s.effectiveLoad || '—'}
                         </td>
                         <td className="border-b border-line px-3 py-2 text-center font-bold tabular-nums">
                           {s.totalAssignments || '—'}
@@ -321,8 +333,8 @@ export function TrackingPage() {
             </div>
 
             <p className="mt-3 text-[11px] leading-relaxed text-ink-soft sm:text-xs">
-              הייצוא כולל את הטווח הנבחר (קובץ CSV שנפתח באקסל עם עברית). במובייל — כרטיסי
-              סיכום; בדסקטופ — מטריצה מלאה.
+              קל יום = מנוחה אמיתית (בוקר/צהריים). קל בלילה לא נספר כמנוחה ונכנס לעומס
+              מוגדל. הייצוא כולל את הטווח הנבחר (CSV לאקסל).
             </p>
           </>
         )}
