@@ -27,16 +27,13 @@ export function PrivacyPage() {
         חזרה
       </Link>
 
-      <SectionCard>
-        <p className="ui-eyebrow mb-1">GATE OUT</p>
-        <h1 className="font-display text-2xl font-bold tracking-tight text-brand-deep sm:text-3xl">
-          מדיניות שימוש ופרטיות
-        </h1>
-        <p className="ui-subtitle mt-2 text-xs sm:text-sm">
-          עדכון אחרון: ספטמבר 2026 · לשימוש פנימי בארגון
-        </p>
+      <SectionCard
+        title="מדיניות שימוש ופרטיות"
+        subtitle="עדכון אחרון: ספטמבר 2026 · לשימוש פנימי בארגון"
+      >
+        <p className="ui-eyebrow mb-4">GATE OUT</p>
 
-        <div className="mt-6 space-y-5 text-sm leading-relaxed text-ink sm:text-[0.9375rem]">
+        <div className="space-y-5 text-sm leading-relaxed text-ink sm:text-[0.9375rem]">
           <section id="terms" className="scroll-mt-6">
             <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
               מדיניות שימוש
