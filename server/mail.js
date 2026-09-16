@@ -6,12 +6,16 @@ import {
   logoAttachment,
 } from './emailLayout.js'
 
-function smtpConfigured() {
+export function isSmtpConfigured() {
   return Boolean(
     String(process.env.SMTP_HOST || '').trim() &&
       smtpUser() &&
       smtpPass(),
   )
+}
+
+function smtpConfigured() {
+  return isSmtpConfigured()
 }
 
 function smtpPass() {
@@ -47,6 +51,13 @@ export async function sendMail({ to, subject, text, html, attachments }) {
     throw err
   }
   if (!smtpConfigured()) {
+    const onVercel = Boolean(process.env.VERCEL || process.env.VERCEL_URL)
+    if (!onVercel) {
+      console.warn(
+        `[mail] SMTP לא מוגדר — המייל לא נשלח אל ${to}\nנושא: ${subject}\n${text}`,
+      )
+      return { queued: false, devLogged: true }
+    }
     const err = new Error(
       'שליחת מייל אינה מוגדרת בשרת — יש להגדיר SMTP_HOST, SMTP_USER ו־SMTP_PASS ב-Vercel',
     )

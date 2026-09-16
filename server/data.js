@@ -253,13 +253,6 @@ async function applyManagerInvites(workers, prevWorkers, options = {}) {
       continue
     }
     const tempPassword = generateTempPassword()
-    const passwordHash = await hashPassword(tempPassword)
-    const updated = {
-      ...w,
-      passwordHash,
-      mustChangePassword: true,
-    }
-    nextWorkers.push(updated)
     try {
       await sendTempPasswordEmail({
         to: w.email,
@@ -267,23 +260,30 @@ async function applyManagerInvites(workers, prevWorkers, options = {}) {
         tempPassword,
         reason: 'invite',
       })
-      await appendAuditLog({
-        action: 'manager_invite',
-        actor: options.actor || null,
-        details: `סיסמה זמנית נשלחה אל ${w.fullName} (${w.email})`,
-      })
     } catch (e) {
       mailErrors.push(
         `${w.fullName}: ${e instanceof Error ? e.message : 'שליחת מייל נכשלה'}`,
       )
+      nextWorkers.push(w)
+      continue
     }
+    const passwordHash = await hashPassword(tempPassword)
+    nextWorkers.push({
+      ...w,
+      passwordHash,
+      mustChangePassword: true,
+    })
+    await appendAuditLog({
+      action: 'manager_invite',
+      actor: options.actor || null,
+      details: `סיסמה זמנית נשלחה אל ${w.fullName} (${w.email})`,
+    })
   }
 
   if (mailErrors.length > 0) {
     const err = new Error(
-      `שמירה בוצעה חלקית / נכשלה בשליחת מייל: ${mailErrors.join(' · ')}`,
+      `שליחת מייל למנהל נכשלה — השינויים לא נשמרו: ${mailErrors.join(' · ')}`,
     )
-    // Fail the whole write if invite mail failed — credentials wouldn't match otherwise
     err.status = 502
     throw err
   }
@@ -528,6 +528,24 @@ export async function requestPasswordReset(phoneRaw) {
   }
 
   const tempPassword = generateTempPassword()
+  try {
+    await sendTempPasswordEmail({
+      to: manager.email,
+      fullName: manager.fullName,
+      tempPassword,
+      reason: 'reset',
+    })
+  } catch (e) {
+    console.error('password reset mail failed', e)
+    const err = new Error(
+      e instanceof Error && e.status === 503
+        ? e.message
+        : 'שליחת מייל האיפוס נכשלה. נסו שוב מאוחר יותר.',
+    )
+    err.status = e?.status || 502
+    throw err
+  }
+
   const passwordHash = await hashPassword(tempPassword)
   await writeState(
     {
@@ -541,24 +559,11 @@ export async function requestPasswordReset(phoneRaw) {
     { skipAudit: true, skipManagerInvites: true },
   )
 
-  try {
-    await sendTempPasswordEmail({
-      to: manager.email,
-      fullName: manager.fullName,
-      tempPassword,
-      reason: 'reset',
-    })
-    await appendAuditLog({
-      action: 'password_reset',
-      actor: { id: manager.id, fullName: manager.fullName, phone: manager.phone },
-      details: `איפוס סיסמה נשלח אל ${manager.email}`,
-    })
-  } catch (e) {
-    console.error('password reset mail failed', e)
-    const err = new Error('שליחת מייל האיפוס נכשלה. נסו שוב מאוחר יותר.')
-    err.status = 502
-    throw err
-  }
+  await appendAuditLog({
+    action: 'password_reset',
+    actor: { id: manager.id, fullName: manager.fullName, phone: manager.phone },
+    details: `איפוס סיסמה נשלח אל ${manager.email}`,
+  })
 
   return generic
 }
@@ -579,6 +584,13 @@ export async function resendManagerTempPassword(workerId, actor) {
   }
 
   const tempPassword = generateTempPassword()
+  await sendTempPasswordEmail({
+    to: manager.email,
+    fullName: manager.fullName,
+    tempPassword,
+    reason: 'invite',
+  })
+
   const passwordHash = await hashPassword(tempPassword)
   await writeState(
     {
@@ -592,12 +604,6 @@ export async function resendManagerTempPassword(workerId, actor) {
     { skipAudit: true, skipManagerInvites: true },
   )
 
-  await sendTempPasswordEmail({
-    to: manager.email,
-    fullName: manager.fullName,
-    tempPassword,
-    reason: 'invite',
-  })
   await appendAuditLog({
     action: 'manager_invite',
     actor: actor || null,

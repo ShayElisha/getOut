@@ -14,7 +14,7 @@ import {
   writeState,
 } from './data.js'
 import { getDb } from './db.js'
-import { sendTestEmail } from './mail.js'
+import { isSmtpConfigured, sendTestEmail } from './mail.js'
 import { assertRateLimit, clientKey } from './rateLimit.js'
 import { createSessionToken, requireUser } from './session.js'
 
@@ -40,11 +40,12 @@ app.get('/api/health', async (_req, res) => {
     res.json({
       ok: true,
       db: true,
+      smtpConfigured: isSmtpConfigured(),
       at: new Date().toISOString(),
       service: 'shibutzon-api',
     })
   } catch {
-    res.status(500).json({ ok: false, db: false })
+    res.status(500).json({ ok: false, db: false, smtpConfigured: isSmtpConfigured() })
   }
 })
 
