@@ -343,6 +343,10 @@ export function HomePage() {
           ) : undefined
         }
       >
+        <p className="mb-3 text-[11px] text-ink-soft sm:text-xs">
+          חלונות משמרת: בוקר 06:00–14:30 · צהריים 14:30–21:30 · לילה
+          21:30–06:00
+        </p>
         {!currentShift ? (
           <p className="text-sm text-ink-soft">
             אין שיבוץ שמור למשמרת {SHIFT_TYPE_LABELS[currentCtx.shiftType]} בחלון
