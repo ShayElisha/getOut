@@ -8,6 +8,7 @@ import { LanesPage } from './pages/LanesPage'
 import { CertsPage } from './pages/CertsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { TrackingPage } from './pages/TrackingPage'
+import { AnalyticsPage } from './pages/AnalyticsPage'
 import { AuditPage } from './pages/AuditPage'
 import { LoginPage } from './pages/LoginPage'
 
@@ -33,6 +34,7 @@ function ProtectedShell() {
         <Route path="lanes" element={<LanesPage />} />
         <Route path="certs" element={<CertsPage />} />
         <Route path="tracking" element={<TrackingPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="history" element={<HistoryPage />} />
         <Route path="history/:shiftId" element={<HistoryPage />} />

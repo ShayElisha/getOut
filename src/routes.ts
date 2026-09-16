@@ -7,6 +7,7 @@ export const VIEW_PATH: Record<View, string> = {
   lanes: '/lanes',
   certs: '/certs',
   tracking: '/tracking',
+  analytics: '/analytics',
   audit: '/audit',
   history: '/history',
 }
@@ -19,6 +20,7 @@ export function viewFromPath(pathname: string): View {
   if (path === '/lanes') return 'lanes'
   if (path === '/certs') return 'certs'
   if (path === '/tracking') return 'tracking'
+  if (path === '/analytics') return 'analytics'
   if (path === '/audit') return 'audit'
   if (path === '/history' || path.startsWith('/history/')) return 'history'
   return 'home'

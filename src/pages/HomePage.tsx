@@ -5,11 +5,11 @@ import {
   Play,
   Users,
   LayoutGrid,
-  History,
   Table2,
   Download,
   Loader2,
   RotateCcw,
+  BarChart3,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import {
@@ -417,11 +417,11 @@ export function HomePage() {
             onClick: () => setView('tracking'),
           },
           {
-            icon: History,
-            label: 'שיבוצים שמורים',
+            icon: BarChart3,
+            label: 'אנליזה',
             value: String(data.history.length),
-            sub: 'MongoDB',
-            onClick: () => setView('history'),
+            sub: 'הוגנות ועומס',
+            onClick: () => setView('analytics'),
           },
         ].map((card, i) => (
           <button

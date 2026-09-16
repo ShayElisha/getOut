@@ -59,5 +59,6 @@ export type View =
   | 'lanes'
   | 'history'
   | 'tracking'
+  | 'analytics'
   | 'audit'
   | 'certs'
