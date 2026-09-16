@@ -101,5 +101,6 @@ export function createSeedData(): AppData {
     lanes: seedLanes(),
     history: [],
     certificationsCatalog: [...DEFAULT_CERTIFICATIONS],
+    revision: 0,
   }
 }

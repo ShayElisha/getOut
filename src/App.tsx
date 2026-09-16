@@ -1,3 +1,4 @@
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider, useApp } from './context/AppContext'
 import { Shell } from './components/Shell'
 import { HomePage } from './pages/HomePage'
@@ -10,31 +11,9 @@ import { TrackingPage } from './pages/TrackingPage'
 import { AuditPage } from './pages/AuditPage'
 import { LoginPage } from './pages/LoginPage'
 
-function Router() {
-  const { view } = useApp()
-  switch (view) {
-    case 'shift':
-      return <ShiftPage />
-    case 'workers':
-      return <WorkersPage />
-    case 'lanes':
-      return <LanesPage />
-    case 'certs':
-      return <CertsPage />
-    case 'history':
-      return <HistoryPage />
-    case 'tracking':
-      return <TrackingPage />
-    case 'audit':
-      return <AuditPage />
-    default:
-      return <HomePage />
-  }
-}
-
-function Gate() {
+function ProtectedShell() {
   const { user, loading } = useApp()
-  if (!user) return <LoginPage />
+  if (!user) return <Navigate to="/login" replace />
   if (loading) {
     return (
       <div className="flex min-h-dvh items-center justify-center text-ink-soft">
@@ -44,7 +23,19 @@ function Gate() {
   }
   return (
     <Shell>
-      <Router />
+      <Routes>
+        <Route index element={<HomePage />} />
+        <Route path="shift" element={<ShiftPage />} />
+        <Route path="shift/:shiftId" element={<ShiftPage />} />
+        <Route path="workers" element={<WorkersPage />} />
+        <Route path="lanes" element={<LanesPage />} />
+        <Route path="certs" element={<CertsPage />} />
+        <Route path="tracking" element={<TrackingPage />} />
+        <Route path="audit" element={<AuditPage />} />
+        <Route path="history" element={<HistoryPage />} />
+        <Route path="history/:shiftId" element={<HistoryPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
     </Shell>
   )
 }
@@ -52,7 +43,10 @@ function Gate() {
 export default function App() {
   return (
     <AppProvider>
-      <Gate />
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/*" element={<ProtectedShell />} />
+      </Routes>
     </AppProvider>
   )
 }

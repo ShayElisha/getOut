@@ -8,9 +8,11 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { v4 as uuid } from 'uuid'
 import { runAssignmentAlgorithm } from '../algorithm'
 import {
+  ApiError,
   deleteShiftRemote,
   fetchAppData,
   loginRemote,
@@ -19,11 +21,17 @@ import {
   seedAppDataRemote,
 } from '../api'
 import {
+  clearDraftStorage,
   clearSession,
+  loadDraftJson,
   loadSession,
+  loadShiftStep,
+  saveDraftJson,
   saveSession,
+  saveShiftStep,
   type SessionUser,
 } from '../auth'
+import { pathForView, viewFromPath } from '../routes'
 import { createSeedData, isDefaultManager } from '../storage'
 import type {
   AppData,
@@ -91,6 +99,7 @@ const emptyData: AppData = {
   lanes: [],
   history: [],
   certificationsCatalog: [],
+  revision: 0,
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
@@ -131,20 +140,71 @@ function stripEmpty(assignments: LaneAssignment[]): LaneAssignment[] {
   }))
 }
 
+function restoreDraft(): ShiftDraft | null {
+  try {
+    const raw = loadDraftJson()
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as ShiftDraft
+    if (!parsed?.id || !Array.isArray(parsed.activeLaneIds)) return null
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function restoreStep(): ShiftStep {
+  const s = loadShiftStep()
+  if (s === 'lanes' || s === 'attendance' || s === 'board') return s
+  return 'lanes'
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate()
+  const location = useLocation()
   const [data, setData] = useState<AppData>(emptyData)
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<SessionUser | null>(() => loadSession())
-  const [view, setView] = useState<View>('home')
-  const [shiftStep, setShiftStep] = useState<ShiftStep>('lanes')
-  const [draft, setDraft] = useState<ShiftDraft | null>(null)
+  const view = viewFromPath(location.pathname)
+  const [shiftStep, setShiftStepState] = useState<ShiftStep>(() => restoreStep())
+  const [draft, setDraft] = useState<ShiftDraft | null>(() => restoreDraft())
 
   const dataRef = useRef(data)
   dataRef.current = data
   const syncTimer = useRef<number | null>(null)
   const skipNextSync = useRef(true)
+  const userRef = useRef(user)
+  userRef.current = user
+
+  const setView = useCallback(
+    (v: View) => {
+      navigate(pathForView(v))
+    },
+    [navigate],
+  )
+
+  const setShiftStep = useCallback((s: ShiftStep) => {
+    setShiftStepState(s)
+    saveShiftStep(s)
+  }, [])
+
+  useEffect(() => {
+    if (draft) {
+      saveDraftJson(JSON.stringify(draft))
+      saveShiftStep(shiftStep)
+    } else {
+      clearDraftStorage()
+    }
+  }, [draft, shiftStep])
+
+  const handleAuthFailure = useCallback(() => {
+    clearSession()
+    setUser(null)
+    setDraft(null)
+    clearDraftStorage()
+    navigate('/login', { replace: true })
+  }, [navigate])
 
   const persistNow = useCallback(async (next: AppData) => {
     setSyncing(true)
@@ -154,13 +214,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setData(saved)
       return saved
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        handleAuthFailure()
+      }
+      if (e instanceof ApiError && e.status === 409 && e.current) {
+        skipNextSync.current = true
+        setData(e.current)
+      }
       const msg = e instanceof Error ? e.message : 'שגיאת שמירה לשרת'
       setError(msg)
       throw e
     } finally {
       setSyncing(false)
     }
-  }, [])
+  }, [handleAuthFailure])
 
   const queuePersist = useCallback(
     (next: AppData) => {
@@ -184,11 +251,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   const refreshFromServer = useCallback(async () => {
+    if (!userRef.current?.token) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
       const remote = await fetchAppData()
-      // Ensure שי אלישע keeps manager flag if missing in old records
       const workers = remote.workers.map((w) => ({
         ...w,
         isManager: Boolean(w.isManager) || isDefaultManager(w),
@@ -196,6 +266,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       skipNextSync.current = true
       setData({ ...remote, workers })
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        handleAuthFailure()
+        return
+      }
       setError(e instanceof Error ? e.message : 'לא ניתן להתחבר לשרת')
       if (dataRef.current.workers.length === 0) {
         setData(createSeedData())
@@ -203,25 +277,67 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [handleAuthFailure])
 
-  const login = useCallback(async (phone: string) => {
-    const session = await loginRemote(phone)
-    saveSession(session)
-    setUser(session)
-    setView('home')
-  }, [])
+  const login = useCallback(
+    async (phone: string) => {
+      const session = await loginRemote(phone)
+      if (!session.token) throw new Error('לא התקבל טוקן התחברות')
+      saveSession(session)
+      setUser(session)
+      navigate('/', { replace: true })
+    },
+    [navigate],
+  )
 
   const logout = useCallback(() => {
     clearSession()
+    clearDraftStorage()
     setUser(null)
     setDraft(null)
-    setView('home')
-  }, [])
+    setData(emptyData)
+    navigate('/login', { replace: true })
+  }, [navigate])
 
   useEffect(() => {
+    if (!user?.token) {
+      setLoading(false)
+      return
+    }
     void refreshFromServer()
-  }, [refreshFromServer])
+  }, [user?.token, refreshFromServer])
+
+  // Redirect unauthenticated users away from app routes
+  useEffect(() => {
+    if (!user && location.pathname !== '/login') {
+      navigate('/login', { replace: true })
+    }
+    if (user && location.pathname === '/login') {
+      navigate('/', { replace: true })
+    }
+  }, [user, location.pathname, navigate])
+
+  // Deep-link: /history/:id → load shift
+  useEffect(() => {
+    const m = location.pathname.match(/^\/history\/([^/]+)\/?$/)
+    if (!m || !user || loading) return
+    const id = decodeURIComponent(m[1])
+    const item = data.history.find((h) => h.id === id)
+    if (!item) return
+    const assigned = new Set(item.assignments.flatMap((a) => a.workerIds))
+    setDraft({
+      id: item.id,
+      date: item.date,
+      shiftType: item.shiftType,
+      activeLaneIds: item.activeLaneIds,
+      presentWorkerIds: item.presentWorkerIds,
+      assignments: padAssignments(item.assignments, data.lanes, item.activeLaneIds),
+      warnings: [],
+      unassignedWorkerIds: item.presentWorkerIds.filter((wid) => !assigned.has(wid)),
+    })
+    setShiftStep('board')
+    navigate('/shift', { replace: true })
+  }, [location.pathname, user, loading, data.history, data.lanes, navigate, setShiftStep])
 
   const toSchedule = useCallback((d: ShiftDraft): ShiftSchedule => {
     const now = new Date().toISOString()
@@ -250,7 +366,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     setShiftStep('lanes')
     setView('shift')
-  }, [data.lanes, data.workers])
+  }, [data.lanes, data.workers, setShiftStep, setView])
 
   const updateDraftMeta = useCallback(
     (patch: Partial<Pick<ShiftDraft, 'date' | 'shiftType'>>) => {
@@ -426,50 +542,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSyncing(true)
     setError(null)
     try {
-      const saved = await saveShiftRemote(schedule)
+      const saved = await saveShiftRemote(schedule, data.revision ?? 0)
       skipNextSync.current = true
       setData(saved)
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) handleAuthFailure()
+      if (e instanceof ApiError && e.status === 409 && e.current) {
+        skipNextSync.current = true
+        setData(e.current)
+      }
       setError(e instanceof Error ? e.message : 'שמירת השיבוץ נכשלה')
       throw e
     } finally {
       setSyncing(false)
     }
-  }, [draft, toSchedule])
+  }, [draft, toSchedule, data.revision, handleAuthFailure])
 
   const loadShiftFromHistory = useCallback(
     (id: string) => {
-      const item = data.history.find((h) => h.id === id)
-      if (!item) return
-      const assigned = new Set(item.assignments.flatMap((a) => a.workerIds))
-      setDraft({
-        id: item.id,
-        date: item.date,
-        shiftType: item.shiftType,
-        activeLaneIds: item.activeLaneIds,
-        presentWorkerIds: item.presentWorkerIds,
-        assignments: padAssignments(item.assignments, data.lanes, item.activeLaneIds),
-        warnings: [],
-        unassignedWorkerIds: item.presentWorkerIds.filter((wid) => !assigned.has(wid)),
-      })
-      setShiftStep('board')
-      setView('shift')
+      navigate(`/history/${encodeURIComponent(id)}`)
     },
-    [data.history, data.lanes],
+    [navigate],
   )
 
   const deleteHistoryItem = useCallback(async (id: string) => {
     setSyncing(true)
     try {
-      const saved = await deleteShiftRemote(id)
+      const saved = await deleteShiftRemote(id, dataRef.current.revision ?? 0)
       skipNextSync.current = true
       setData(saved)
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) handleAuthFailure()
+      if (e instanceof ApiError && e.status === 409 && e.current) {
+        skipNextSync.current = true
+        setData(e.current)
+      }
       setError(e instanceof Error ? e.message : 'מחיקה נכשלה')
     } finally {
       setSyncing(false)
     }
-  }, [])
+  }, [handleAuthFailure])
 
   const addWorker = useCallback(
     (w: Omit<Worker, 'id'>) => {
@@ -559,17 +671,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const resetToSeed = useCallback(async () => {
     setSyncing(true)
     try {
-      const seeded = await seedAppDataRemote()
+      const seeded = await seedAppDataRemote(dataRef.current.revision ?? 0)
       skipNextSync.current = true
       setData(seeded)
       setDraft(null)
+      clearDraftStorage()
       setView('home')
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) handleAuthFailure()
+      if (e instanceof ApiError && e.status === 409 && e.current) {
+        skipNextSync.current = true
+        setData(e.current)
+      }
       setError(e instanceof Error ? e.message : 'איפוס נכשל')
     } finally {
       setSyncing(false)
     }
-  }, [])
+  }, [setView, handleAuthFailure])
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -618,7 +736,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       login,
       logout,
       view,
+      setView,
       shiftStep,
+      setShiftStep,
       draft,
       startShift,
       updateDraftMeta,

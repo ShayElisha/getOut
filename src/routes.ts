@@ -1,0 +1,29 @@
+import type { View } from './types'
+
+export const VIEW_PATH: Record<View, string> = {
+  home: '/',
+  shift: '/shift',
+  workers: '/workers',
+  lanes: '/lanes',
+  certs: '/certs',
+  tracking: '/tracking',
+  audit: '/audit',
+  history: '/history',
+}
+
+export function viewFromPath(pathname: string): View {
+  const path = pathname.replace(/\/+$/, '') || '/'
+  if (path === '/') return 'home'
+  if (path === '/shift' || path.startsWith('/shift/')) return 'shift'
+  if (path === '/workers') return 'workers'
+  if (path === '/lanes') return 'lanes'
+  if (path === '/certs') return 'certs'
+  if (path === '/tracking') return 'tracking'
+  if (path === '/audit') return 'audit'
+  if (path === '/history' || path.startsWith('/history/')) return 'history'
+  return 'home'
+}
+
+export function pathForView(view: View): string {
+  return VIEW_PATH[view] ?? '/'
+}

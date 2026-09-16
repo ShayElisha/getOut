@@ -140,6 +140,7 @@ export function normalizeData(raw) {
     certificationsCatalog: Array.isArray(raw?.certificationsCatalog)
       ? raw.certificationsCatalog
       : [...DEFAULT_CERTIFICATIONS],
+    revision: Number.isFinite(Number(raw?.revision)) ? Number(raw.revision) : 0,
   }
 }
 
@@ -148,21 +149,50 @@ export async function readState() {
   const doc = await col.findOne({ _id: 'main' })
   if (!doc) {
     const seed = createSeedData()
-    await col.insertOne({ _id: 'main', ...seed, updatedAt: new Date() })
-    return seed
+    const revision = 1
+    await col.insertOne({
+      _id: 'main',
+      ...seed,
+      revision,
+      updatedAt: new Date(),
+    })
+    return { ...seed, revision }
   }
   return normalizeData(doc)
 }
 
 export async function writeState(data, options = {}) {
   const col = await getStateCollection()
-  const prev = options.skipAudit ? null : await readState().catch(() => null)
+  const prevDoc = await col.findOne({ _id: 'main' })
+  const prev = prevDoc ? normalizeData(prevDoc) : null
+  const currentRevision = prev?.revision ?? 0
+
+  if (
+    options.expectedRevision != null &&
+    Number(options.expectedRevision) !== currentRevision
+  ) {
+    const err = new Error(
+      'הנתונים עודכנו ע״י מנהל אחר. רעננו את המסך וחזרו על השינוי.',
+    )
+    err.status = 409
+    err.current = prev
+    throw err
+  }
+
   const payload = normalizeData(data)
-  await col.updateOne(
-    { _id: 'main' },
-    { $set: { ...payload, updatedAt: new Date() } },
-    { upsert: true },
-  )
+  const nextRevision = currentRevision + 1
+  const toStore = {
+    workers: payload.workers,
+    lanes: payload.lanes,
+    history: payload.history,
+    certificationsCatalog: payload.certificationsCatalog,
+    revision: nextRevision,
+    updatedAt: new Date(),
+  }
+
+  await col.updateOne({ _id: 'main' }, { $set: toStore }, { upsert: true })
+
+  const result = { ...payload, revision: nextRevision }
 
   if (!options.skipAudit) {
     if (options.action === 'data_reset') {
@@ -172,7 +202,7 @@ export async function writeState(data, options = {}) {
         details: options.details || 'איפוס לכל נתוני הדוגמה',
       })
     } else if (prev) {
-      const summary = summarizeAppDataChange(prev, payload)
+      const summary = summarizeAppDataChange(prev, result)
       if (summary) {
         await appendAuditLog({
           action: 'data_update',
@@ -183,7 +213,7 @@ export async function writeState(data, options = {}) {
     }
   }
 
-  return payload
+  return result
 }
 
 export async function loginByPhone(phoneRaw) {
@@ -218,17 +248,24 @@ export async function loginByPhone(phoneRaw) {
   return user
 }
 
-export async function upsertShift(id, body, actor) {
+export async function upsertShift(id, body, actor, options = {}) {
   const state = await readState()
   const schedule = { ...body, id }
   delete schedule.actor
+  delete schedule.expectedRevision
   const idx = state.history.findIndex((h) => h.id === schedule.id)
   const isNew = idx === -1
   const history =
     isNew
       ? [schedule, ...state.history]
       : state.history.map((h, i) => (i === idx ? { ...h, ...schedule } : h))
-  const saved = await writeState({ ...state, history }, { skipAudit: true })
+  const saved = await writeState(
+    { ...state, history },
+    {
+      skipAudit: true,
+      expectedRevision: options.expectedRevision,
+    },
+  )
   await appendAuditLog({
     action: isNew ? 'shift_save' : 'shift_update',
     actor,
@@ -237,7 +274,7 @@ export async function upsertShift(id, body, actor) {
   return saved
 }
 
-export async function deleteShift(id, actor) {
+export async function deleteShift(id, actor, options = {}) {
   const state = await readState()
   const existing = state.history.find((h) => h.id === id)
   const saved = await writeState(
@@ -245,7 +282,10 @@ export async function deleteShift(id, actor) {
       ...state,
       history: state.history.filter((h) => h.id !== id),
     },
-    { skipAudit: true },
+    {
+      skipAudit: true,
+      expectedRevision: options.expectedRevision,
+    },
   )
   await appendAuditLog({
     action: 'shift_delete',

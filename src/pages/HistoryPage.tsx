@@ -56,7 +56,13 @@ export function HistoryPage() {
           <button
             type="button"
             onClick={() => {
-              if (confirm('לאפס את כל הנתונים לדוגמה?')) resetToSeed()
+              if (
+                confirm(
+                  'לאפס את כל הנתונים לדוגמה?\nפעולה זו דורשת אישור כפול ותירשם ביומן.',
+                )
+              ) {
+                void resetToSeed()
+              }
             }}
             className="text-xs font-medium text-ink-soft hover:text-hard"
           >

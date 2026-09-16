@@ -1,5 +1,5 @@
 import { createSeedData, writeState } from '../server/data.js'
-import { actorFromRequest } from '../server/audit.js'
+import { requireUser } from '../server/session.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -8,14 +8,26 @@ export default async function handler(req, res) {
     return
   }
   try {
+    const actor = requireUser(req)
+    if (req.body?.confirm !== 'RESET') {
+      res.status(400).json({ error: 'לאיפוס יש לשלוח confirm: "RESET"' })
+      return
+    }
     res.status(200).json(
       await writeState(createSeedData(), {
         action: 'data_reset',
-        actor: actorFromRequest(req),
+        actor,
+        expectedRevision:
+          req.body?.expectedRevision != null
+            ? Number(req.body.expectedRevision)
+            : undefined,
       }),
     )
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Failed to seed data' })
+    const status = err.status || 500
+    if (status >= 500) console.error(err)
+    const body = { error: err.message || 'Failed to seed data' }
+    if (err.current) body.current = err.current
+    res.status(status).json(body)
   }
 }

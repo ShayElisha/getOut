@@ -1,4 +1,5 @@
 import { listAuditLogs } from '../server/audit.js'
+import { requireUser } from '../server/session.js'
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -7,10 +8,12 @@ export default async function handler(req, res) {
     return
   }
   try {
+    requireUser(req)
     const limit = req.query?.limit
     res.status(200).json(await listAuditLogs({ limit }))
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Failed to load audit log' })
+    const status = err.status || 500
+    if (status >= 500) console.error(err)
+    res.status(status).json({ error: err.message || 'Failed to load audit log' })
   }
 }

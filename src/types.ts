@@ -48,6 +48,8 @@ export interface AppData {
   history: ShiftSchedule[]
   /** Known certification labels used across the app */
   certificationsCatalog: string[]
+  /** Optimistic-lock revision from Mongo */
+  revision?: number
 }
 
 export type View =

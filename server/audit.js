@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { getAuditCollection } from './db.js'
+import { getBearerToken, verifySessionToken } from './session.js'
 
 /**
  * @typedef {{ id?: string, fullName?: string, phone?: string } | null} AuditActor
@@ -49,31 +50,12 @@ export async function listAuditLogs(opts = {}) {
   }))
 }
 
-/** @param {import('express').Request | { headers?: Record<string, string|string[]|undefined>, body?: unknown }} req */
+/**
+ * Actor from verified Bearer token only (ignores spoofable headers).
+ * @param {import('http').IncomingMessage | { headers?: Record<string, string|string[]|undefined> }} req
+ */
 export function actorFromRequest(req) {
-  const headers = req.headers || {}
-  const id = headerValue(headers['x-actor-id'])
-  if (id) {
-    return {
-      id,
-      fullName: decodeURIComponent(headerValue(headers['x-actor-name']) || ''),
-      phone: headerValue(headers['x-actor-phone']) || '',
-    }
-  }
-  const body = req.body
-  if (body && typeof body === 'object' && body.actor && typeof body.actor === 'object') {
-    return {
-      id: body.actor.id || '',
-      fullName: body.actor.fullName || '',
-      phone: body.actor.phone || '',
-    }
-  }
-  return null
-}
-
-function headerValue(v) {
-  if (Array.isArray(v)) return v[0] || ''
-  return v || ''
+  return verifySessionToken(getBearerToken(req))
 }
 
 export function summarizeAppDataChange(prev, next) {
@@ -109,6 +91,7 @@ export function summarizeAppDataChange(prev, next) {
         o.name !== l.name ||
         o.staffingStandard !== l.staffingStandard ||
         o.intensity !== l.intensity ||
+        Boolean(o.afternoonHandoff) !== Boolean(l.afternoonHandoff) ||
         JSON.stringify(o.requiredCertifications) !==
           JSON.stringify(l.requiredCertifications)
       )
