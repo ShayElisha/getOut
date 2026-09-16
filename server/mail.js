@@ -1,7 +1,15 @@
 import nodemailer from 'nodemailer'
+import {
+  appDisplayName,
+  buildTempPasswordEmail,
+  buildTestEmail,
+  logoAttachment,
+} from './emailLayout.js'
 
 function smtpConfigured() {
-  return Boolean(process.env.SMTP_HOST && (process.env.SMTP_FROM || process.env.SMTP_USER))
+  return Boolean(
+    process.env.SMTP_HOST && (process.env.SMTP_FROM || process.env.SMTP_USER),
+  )
 }
 
 function smtpPass() {
@@ -21,9 +29,9 @@ function createTransport() {
 }
 
 /**
- * @param {{ to: string, subject: string, text: string, html?: string }} opts
+ * @param {{ to: string, subject: string, text: string, html?: string, attachments?: object[] }} opts
  */
-export async function sendMail({ to, subject, text, html }) {
+export async function sendMail({ to, subject, text, html, attachments }) {
   if (!to) {
     const err = new Error('כתובת מייל חסרה')
     err.status = 400
@@ -38,7 +46,7 @@ export async function sendMail({ to, subject, text, html }) {
 
   const from =
     process.env.SMTP_FROM ||
-    `${process.env.APP_NAME || 'GATE OUT'} <${process.env.SMTP_USER}>`
+    `${appDisplayName()} <${process.env.SMTP_USER}>`
 
   const transporter = createTransport()
   try {
@@ -48,6 +56,7 @@ export async function sendMail({ to, subject, text, html }) {
       subject,
       text,
       html: html || undefined,
+      attachments: attachments?.length ? attachments : undefined,
     })
     return { queued: true, devLogged: false }
   } catch (err) {
@@ -60,6 +69,11 @@ export async function sendMail({ to, subject, text, html }) {
   }
 }
 
+function withLogoAttachments() {
+  const logo = logoAttachment()
+  return logo ? [logo] : []
+}
+
 /**
  * @param {{ to: string, fullName: string, tempPassword: string, reason: 'invite' | 'reset' }} opts
  */
@@ -69,41 +83,14 @@ export async function sendTempPasswordEmail({
   tempPassword,
   reason,
 }) {
-  const appName = process.env.APP_NAME || 'שיבוצון · GATE OUT'
-  const isReset = reason === 'reset'
-  const subject = isReset
-    ? `${appName} — איפוס סיסמה`
-    : `${appName} — סיסמה זמנית להתחברות`
-  const intro = isReset
-    ? 'התקבלה בקשה לאיפוס סיסמה בחשבון המנהל שלך.'
-    : 'סומנת כמנהל/ת במערכת השיבוץ. להלן סיסמה זמנית להתחברות.'
-  const text = [
-    `שלום ${fullName || ''},`,
-    '',
-    intro,
-    '',
-    `סיסמה זמנית: ${tempPassword}`,
-    '',
-    'לאחר ההתחברות תידרש/י להגדיר סיסמה קבועה חדשה.',
-    'אם לא ביקשת פעולה זו — פנה/י למנהל המערכת.',
-    '',
-    appName,
-  ].join('\n')
-
-  const html = `
-    <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.6;color:#0f1c2e">
-      <p>שלום ${escapeHtml(fullName || '')},</p>
-      <p>${intro}</p>
-      <p style="font-size:18px"><strong>סיסמה זמנית:</strong>
-        <code style="background:#f3f6f9;padding:4px 8px;border-radius:6px">${escapeHtml(tempPassword)}</code>
-      </p>
-      <p>לאחר ההתחברות תידרש/י להגדיר סיסמה קבועה חדשה.</p>
-      <p style="color:#3d4f66;font-size:13px">אם לא ביקשת פעולה זו — פנה/י למנהל המערכת.</p>
-      <p style="color:#3d4f66;font-size:12px">${escapeHtml(appName)}</p>
-    </div>
-  `
-
-  return sendMail({ to, subject, text, html })
+  const built = buildTempPasswordEmail({ fullName, tempPassword, reason })
+  return sendMail({
+    to,
+    subject: built.subject,
+    text: built.text,
+    html: built.html,
+    attachments: withLogoAttachments(),
+  })
 }
 
 /**
@@ -120,20 +107,12 @@ export async function sendTestEmail(opts = {}) {
     err.status = 400
     throw err
   }
-  const appName = process.env.APP_NAME || 'שיבוצון · GATE OUT'
-  const at = new Date().toISOString()
+  const built = buildTestEmail()
   return sendMail({
     to,
-    subject: `${appName} — בדיקת שליחת מייל`,
-    text: `בדיקת SMTP הצליחה.\nזמן: ${at}\n`,
-    html: `<p dir="rtl">בדיקת <strong>SMTP</strong> הצליחה.</p><p>זמן: ${escapeHtml(at)}</p>`,
+    subject: built.subject,
+    text: built.text,
+    html: built.html,
+    attachments: withLogoAttachments(),
   })
-}
-
-function escapeHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
 }
