@@ -13,15 +13,22 @@ function smtpConfigured() {
 }
 
 function smtpPass() {
-  return process.env.SMTP_PASS || process.env.SMTP_PASSWORD || ''
+  // Gmail App Passwords are often pasted with spaces; strip them.
+  return String(process.env.SMTP_PASS || process.env.SMTP_PASSWORD || '')
+    .trim()
+    .replace(/\s+/g, '')
+}
+
+function smtpUser() {
+  return String(process.env.SMTP_USER || '').trim()
 }
 
 function createTransport() {
   const port = Number(process.env.SMTP_PORT || 587)
-  const user = process.env.SMTP_USER
+  const user = smtpUser()
   const pass = smtpPass()
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
+    host: String(process.env.SMTP_HOST || '').trim(),
     port,
     secure: port === 465,
     auth: user && pass ? { user, pass } : undefined,
@@ -60,9 +67,15 @@ export async function sendMail({ to, subject, text, html, attachments }) {
     })
     return { queued: true, devLogged: false }
   } catch (err) {
-    console.error('[mail] send failed', err instanceof Error ? err.message : err)
-    const e = new Error('שליחת המייל נכשלה')
+    const detail = err instanceof Error ? err.message : String(err)
+    console.error('[mail] send failed', detail)
+    const e = new Error(
+      /Invalid login|Username and Password not accepted|EAUTH/i.test(detail)
+        ? 'אימות SMTP נכשל — בדקו SMTP_USER ו־SMTP_PASS (App Password של Gmail)'
+        : 'שליחת המייל נכשלה',
+    )
     e.status = 502
+    e.cause = err
     throw e
   } finally {
     transporter.close?.()
