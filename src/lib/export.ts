@@ -7,6 +7,7 @@ export interface ExportLaneLine {
   intensity: Intensity
   workers: string[]
   staffingStandard: number
+  notes?: string
 }
 
 export interface ExportMeta {
@@ -78,6 +79,7 @@ function buildExportNode(
         <th style="text-align:right;background:#0f3350;color:#fff;padding:10px 12px;font-weight:700;border:1px solid #0f3350;width:14%">עצימות</th>
         <th style="text-align:right;background:#0f3350;color:#fff;padding:10px 12px;font-weight:700;border:1px solid #0f3350;width:10%">תקן</th>
         <th style="text-align:right;background:#0f3350;color:#fff;padding:10px 12px;font-weight:700;border:1px solid #0f3350">בודקים משובצים</th>
+        <th style="text-align:right;background:#0f3350;color:#fff;padding:10px 12px;font-weight:700;border:1px solid #0f3350;width:22%">הערות</th>
       </tr>
     </thead>
   `
@@ -89,6 +91,9 @@ function buildExportNode(
     const namesHtml = names.length
       ? names.map((n, idx) => `${idx + 1}. ${escapeHtml(n)}`).join(' &nbsp;·&nbsp; ')
       : '<span style="color:#6b7c90">— פנוי —</span>'
+    const notesHtml = line.notes?.trim()
+      ? escapeHtml(line.notes.trim())
+      : '<span style="color:#6b7c90">—</span>'
     const tr = document.createElement('tr')
     tr.innerHTML = `
       <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};font-weight:700;vertical-align:top">
@@ -98,6 +103,7 @@ function buildExportNode(
       <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};vertical-align:top">${INTENSITY_LABELS[line.intensity]}</td>
       <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};vertical-align:top;font-variant-numeric:tabular-nums">${line.staffingStandard}</td>
       <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};vertical-align:top;line-height:1.55">${namesHtml}</td>
+      <td style="padding:11px 12px;border:1px solid #d5dee8;background:${bg};vertical-align:top;line-height:1.45;font-size:13px;color:#3d4f66">${notesHtml}</td>
     `
     tbody.appendChild(tr)
   })
@@ -185,13 +191,14 @@ export async function downloadBoardImage(
 export function buildWhatsAppText(
   date: string,
   shiftType: ShiftType,
-  lines: { laneName: string; workers: string[] }[],
+  lines: { laneName: string; workers: string[]; notes?: string }[],
 ): string {
   const header = `*שיבוץ שער יציאה — ${formatDateHe(date)} · ${SHIFT_TYPE_LABELS[shiftType]}*`
   const body = lines
     .map((l) => {
       const names = l.workers.length ? l.workers.join(', ') : '—'
-      return `• *${l.laneName}:* ${names}`
+      const note = l.notes?.trim() ? `\n   _הערה:_ ${l.notes.trim()}` : ''
+      return `• *${l.laneName}:* ${names}${note}`
     })
     .join('\n')
   return `${header}\n\n${body}\n\n_מסמך שיבוצון_`

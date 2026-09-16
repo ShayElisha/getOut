@@ -85,6 +85,7 @@ interface AppContextValue {
   setAllActiveWorkers: (on: boolean) => void
   runAutoAssign: () => void
   updateAssignment: (laneId: string, slotIndex: number, workerId: string | null) => void
+  updateLaneNotes: (laneId: string, notes: string) => void
   addExtraWorkerToLane: (laneId: string, workerId: string) => void
   addSlotToLane: (laneId: string) => void
   saveCurrentShift: () => Promise<void>
@@ -134,7 +135,11 @@ function padAssignments(
     const targetLen = Math.max(std, filled.length)
     const padded = [...filled]
     while (padded.length < targetLen) padded.push('')
-    return { laneId, workerIds: padded }
+    return {
+      laneId,
+      workerIds: padded,
+      notes: existing?.notes?.trim() ? existing.notes : undefined,
+    }
   })
 }
 
@@ -142,6 +147,7 @@ function stripEmpty(assignments: LaneAssignment[]): LaneAssignment[] {
   return assignments.map((a) => ({
     laneId: a.laneId,
     workerIds: a.workerIds.filter(Boolean),
+    ...(a.notes?.trim() ? { notes: a.notes.trim() } : {}),
   }))
 }
 
@@ -473,7 +479,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       )
       return {
         ...d,
-        assignments: padAssignments(result.assignments, data.lanes, d.activeLaneIds),
+        assignments: padAssignments(
+          result.assignments.map((a) => {
+            const prev = d.assignments.find((x) => x.laneId === a.laneId)
+            return prev?.notes?.trim()
+              ? { ...a, notes: prev.notes }
+              : a
+          }),
+          data.lanes,
+          d.activeLaneIds,
+        ),
         warnings: result.warnings,
         unassignedWorkerIds: result.unassignedWorkerIds,
       }
@@ -514,6 +529,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           assignments: padded,
           unassignedWorkerIds: d.presentWorkerIds.filter((id) => !assignedIds.has(id)),
         }
+      })
+    },
+    [data.lanes],
+  )
+
+  const updateLaneNotes = useCallback(
+    (laneId: string, notes: string) => {
+      setDraft((d) => {
+        if (!d) return d
+        const padded = padAssignments(d.assignments, data.lanes, d.activeLaneIds).map(
+          (a) =>
+            a.laneId === laneId
+              ? { ...a, notes: notes.trim() ? notes : undefined }
+              : a,
+        )
+        return { ...d, assignments: padded }
       })
     },
     [data.lanes],
@@ -752,6 +783,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllActiveWorkers,
       runAutoAssign,
       updateAssignment,
+      updateLaneNotes,
       addExtraWorkerToLane,
       addSlotToLane,
       saveCurrentShift,
@@ -791,6 +823,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllActiveWorkers,
       runAutoAssign,
       updateAssignment,
+      updateLaneNotes,
       addExtraWorkerToLane,
       addSlotToLane,
       saveCurrentShift,

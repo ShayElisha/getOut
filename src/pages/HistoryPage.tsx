@@ -228,17 +228,17 @@ export function HistoryPage() {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-line">
-                <table className="min-w-full border-collapse text-right text-xs">
+              <div className="-mx-1 overflow-x-auto overscroll-x-contain rounded-xl border border-line sm:mx-0">
+                <table className="w-max min-w-full border-collapse text-right text-xs">
                   <thead>
                     <tr className="bg-brand-deep text-white">
-                      <th className="sticky right-0 z-20 min-w-[7.5rem] bg-brand-deep px-3 py-2.5 text-right font-semibold shadow-[-4px_0_8px_rgb(0_0_0/0.08)]">
+                      <th className="sticky right-0 z-30 min-w-[8rem] bg-brand-deep px-3 py-2.5 text-right font-semibold shadow-[-6px_0_12px_rgb(0_0_0/0.18)]">
                         בודק
                       </th>
                       {matrix.columns.map((col) => (
                         <th
                           key={col.key}
-                          className="min-w-[5.5rem] px-2 py-2 font-medium"
+                          className="min-w-[6rem] whitespace-nowrap px-2 py-2 font-medium"
                         >
                           <button
                             type="button"
@@ -263,7 +263,7 @@ export function HistoryPage() {
                       return (
                         <tr key={row.workerId} className={rowBg}>
                           <td
-                            className={`sticky right-0 z-10 border-b border-line px-3 py-2 font-semibold text-ink shadow-[-4px_0_8px_rgb(0_0_0/0.04)] ${rowBg}`}
+                            className={`sticky right-0 z-20 border-b border-line px-3 py-2 font-semibold whitespace-nowrap text-ink shadow-[-6px_0_12px_rgb(0_0_0/0.1)] ${rowBg}`}
                           >
                             {row.fullName}
                           </td>
@@ -302,8 +302,8 @@ export function HistoryPage() {
                 </table>
               </div>
               <p className="mt-3 text-[11px] leading-relaxed text-ink-soft sm:text-xs">
-                התאריכים מסודרים מימין לשמאל (מהישן לחדש). לחיצה על כותרת עמודה
-                פותחת את השיבוץ. «נוכח» = היה בנוכחות אך לא שובץ לנתיב.
+                גלילה אופקית מציגה את כל המשמרות. עמודת השמות קבועה מימין.
+                תאריכים מימין→שמאל (ישן→חדש). לחיצה על כותרת פותחת שיבוץ.
               </p>
             </>
           )

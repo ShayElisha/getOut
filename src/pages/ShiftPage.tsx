@@ -45,6 +45,7 @@ export function ShiftPage() {
     saveCurrentShift,
     startShift,
     discardDraft,
+    updateLaneNotes,
   } = useApp()
 
   const [extraFlow, setExtraFlow] = useState<ExtraFlow>('closed')
@@ -73,6 +74,7 @@ export function ShiftPage() {
           intensity: lane.intensity,
           workers,
           staffingStandard: lane.staffingStandard,
+          notes: assignment?.notes?.trim() || undefined,
         },
       ]
     })
@@ -662,6 +664,18 @@ export function ShiftPage() {
                         )
                       })}
                     </div>
+                    <label className="mt-3 block">
+                      <span className="mb-1 block text-[10px] font-semibold text-[#3d4f66] sm:text-xs">
+                        הערות לנתיב
+                      </span>
+                      <textarea
+                        className="ui-field min-h-[2.75rem] resize-y !py-2 text-xs sm:text-sm"
+                        rows={2}
+                        placeholder="הערה שתופיע גם בוואטסאפ ובייצוא…"
+                        value={assignment?.notes ?? ''}
+                        onChange={(e) => updateLaneNotes(laneId, e.target.value)}
+                      />
+                    </label>
                   </div>
                 )
               })}

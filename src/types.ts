@@ -29,6 +29,8 @@ export interface Lane {
 export interface LaneAssignment {
   laneId: string
   workerIds: string[]
+  /** Free-text note for this lane on the shift (also shared to WhatsApp) */
+  notes?: string
 }
 
 export interface ShiftSchedule {

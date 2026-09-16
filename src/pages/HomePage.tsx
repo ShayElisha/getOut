@@ -203,6 +203,7 @@ export function HomePage() {
             intensity: lane.intensity,
             workers,
             staffingStandard: lane.staffingStandard,
+            notes: assignment?.notes?.trim() || undefined,
           },
         ]
       })
