@@ -8,7 +8,7 @@ export interface Worker {
   phone: string
   certifications: string[]
   status: WorkerStatus
-  /** Can log in to the system with phone (no OTP for now) */
+  /** Can log in to the system with phone + password */
   isManager: boolean
 }
 

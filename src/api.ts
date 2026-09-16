@@ -89,12 +89,29 @@ export function deleteShiftRemote(
   return request<AppData>(`/api/shifts/${id}${q}`, { method: 'DELETE' })
 }
 
+export type LoginNextStep = 'setup' | 'login'
+
+export function checkLoginRemote(
+  phone: string,
+): Promise<{ next: LoginNextStep; phone: string }> {
+  return request<{ next: LoginNextStep; phone: string }>('/api/login', {
+    method: 'POST',
+    body: JSON.stringify({ phone }),
+  })
+}
+
 export function loginRemote(
   phone: string,
+  password: string,
+  passwordConfirm?: string,
 ): Promise<SessionUser & { token: string }> {
   return request<SessionUser & { token: string }>('/api/login', {
     method: 'POST',
-    body: JSON.stringify({ phone }),
+    body: JSON.stringify({
+      phone,
+      password,
+      ...(passwordConfirm !== undefined ? { passwordConfirm } : {}),
+    }),
   })
 }
 

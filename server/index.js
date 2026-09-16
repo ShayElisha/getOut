@@ -6,6 +6,7 @@ import {
   createSeedData,
   deleteShift,
   loginByPhone,
+  publicData,
   readState,
   upsertShift,
   writeState,
@@ -51,9 +52,16 @@ app.post('/api/login', async (req, res) => {
       limit: 10,
       windowMs: 15 * 60_000,
     })
-    const user = await loginByPhone(phone)
-    const token = createSessionToken(user)
-    res.json({ ...user, token })
+    const result = await loginByPhone(phone, {
+      password: req.body?.password,
+      passwordConfirm: req.body?.passwordConfirm,
+    })
+    if (result.next) {
+      res.json(result)
+      return
+    }
+    const token = createSessionToken(result)
+    res.json({ ...result, token })
   } catch (err) {
     sendError(res, err)
   }
@@ -62,7 +70,7 @@ app.post('/api/login', async (req, res) => {
 app.get('/api/data', async (req, res) => {
   try {
     requireUser(req)
-    res.json(await readState())
+    res.json(publicData(await readState()))
   } catch (err) {
     sendError(res, err)
   }

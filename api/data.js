@@ -1,11 +1,11 @@
-import { readState, writeState } from '../server/data.js'
+import { publicData, readState, writeState } from '../server/data.js'
 import { requireUser } from '../server/session.js'
 
 export default async function handler(req, res) {
   try {
     const actor = requireUser(req)
     if (req.method === 'GET') {
-      res.status(200).json(await readState())
+      res.status(200).json(publicData(await readState()))
       return
     }
     if (req.method === 'PUT') {

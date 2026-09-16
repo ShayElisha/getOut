@@ -15,9 +15,16 @@ export default async function handler(req, res) {
       limit: 10,
       windowMs: 15 * 60_000,
     })
-    const user = await loginByPhone(phone)
-    const token = createSessionToken(user)
-    res.status(200).json({ ...user, token })
+    const result = await loginByPhone(phone, {
+      password: req.body?.password,
+      passwordConfirm: req.body?.passwordConfirm,
+    })
+    if (result.next) {
+      res.status(200).json(result)
+      return
+    }
+    const token = createSessionToken(result)
+    res.status(200).json({ ...result, token })
   } catch (err) {
     const status = err.status || 500
     if (status >= 500) console.error(err)

@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { getStateCollection } from './db.js'
 import { appendAuditLog, summarizeAppDataChange } from './audit.js'
+import {
+  hashPassword,
+  validatePasswordRules,
+  verifyPassword,
+} from './password.js'
 
 export const DEFAULT_CERTIFICATIONS = [
   'בדיקת דרכונים',
@@ -105,7 +110,7 @@ export function createSeedData() {
 }
 
 function normalizeWorker(w) {
-  return {
+  const worker = {
     id: w.id,
     fullName: w.fullName || '',
     phone: w.phone || '',
@@ -113,6 +118,10 @@ function normalizeWorker(w) {
     status: w.status === 'inactive' ? 'inactive' : 'active',
     isManager: Boolean(w.isManager) || isDefaultManager(w),
   }
+  if (typeof w.passwordHash === 'string' && w.passwordHash) {
+    worker.passwordHash = w.passwordHash
+  }
+  return worker
 }
 
 function normalizeLane(l) {
@@ -142,6 +151,31 @@ export function normalizeData(raw) {
       : [...DEFAULT_CERTIFICATIONS],
     revision: Number.isFinite(Number(raw?.revision)) ? Number(raw.revision) : 0,
   }
+}
+
+/** Strip secrets before sending AppData to clients. */
+export function publicData(data) {
+  if (!data) return data
+  return {
+    ...data,
+    workers: Array.isArray(data.workers)
+      ? data.workers.map(({ passwordHash: _h, ...w }) => w)
+      : [],
+  }
+}
+
+function mergePasswordHashes(incomingWorkers, prevWorkers) {
+  const prevHashes = new Map(
+    (prevWorkers || [])
+      .filter((w) => w?.id && w.passwordHash)
+      .map((w) => [w.id, w.passwordHash]),
+  )
+  return incomingWorkers.map((w) => {
+    if (w.passwordHash) return w
+    const kept = prevHashes.get(w.id)
+    if (!kept) return w
+    return { ...w, passwordHash: kept }
+  })
 }
 
 export async function readState() {
@@ -175,11 +209,15 @@ export async function writeState(data, options = {}) {
       'הנתונים עודכנו ע״י מנהל אחר. רעננו את המסך וחזרו על השינוי.',
     )
     err.status = 409
-    err.current = prev
+    err.current = publicData(prev)
     throw err
   }
 
-  const payload = normalizeData(data)
+  const normalized = normalizeData(data)
+  const payload = {
+    ...normalized,
+    workers: mergePasswordHashes(normalized.workers, prev?.workers),
+  }
   const nextRevision = currentRevision + 1
   const toStore = {
     workers: payload.workers,
@@ -213,10 +251,10 @@ export async function writeState(data, options = {}) {
     }
   }
 
-  return result
+  return publicData(result)
 }
 
-export async function loginByPhone(phoneRaw) {
+export async function loginByPhone(phoneRaw, credentials = {}) {
   const phone = normalizePhone(phoneRaw)
   if (!phone) {
     const err = new Error('נא להזין מספר טלפון')
@@ -232,6 +270,64 @@ export async function loginByPhone(phoneRaw) {
   )
   if (!manager) {
     const err = new Error('אין הרשאת מנהל למספר זה')
+    err.status = 401
+    throw err
+  }
+
+  const hasPassword = Boolean(manager.passwordHash)
+  const password =
+    typeof credentials.password === 'string' ? credentials.password : ''
+  const passwordConfirm =
+    typeof credentials.passwordConfirm === 'string'
+      ? credentials.passwordConfirm
+      : ''
+
+  // Step 1: phone only — tell the client which password UI to show.
+  if (!password) {
+    return {
+      next: hasPassword ? 'login' : 'setup',
+      phone: manager.phone,
+    }
+  }
+
+  if (!hasPassword) {
+    const ruleError = validatePasswordRules(password)
+    if (ruleError) {
+      const err = new Error(ruleError)
+      err.status = 400
+      throw err
+    }
+    if (password !== passwordConfirm) {
+      const err = new Error('אימות הסיסמה אינו תואם')
+      err.status = 400
+      throw err
+    }
+    const passwordHash = await hashPassword(password)
+    await writeState(
+      {
+        ...data,
+        workers: data.workers.map((w) =>
+          w.id === manager.id ? { ...w, passwordHash } : w,
+        ),
+      },
+      { skipAudit: true },
+    )
+    const user = {
+      id: manager.id,
+      fullName: manager.fullName,
+      phone: manager.phone,
+    }
+    await appendAuditLog({
+      action: 'login',
+      actor: user,
+      details: 'הגדרת סיסמה והתחברות',
+    })
+    return user
+  }
+
+  const ok = await verifyPassword(password, manager.passwordHash)
+  if (!ok) {
+    const err = new Error('סיסמה שגויה')
     err.status = 401
     throw err
   }

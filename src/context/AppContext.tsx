@@ -13,6 +13,7 @@ import { v4 as uuid } from 'uuid'
 import { runAssignmentAlgorithm } from '../algorithm'
 import {
   ApiError,
+  checkLoginRemote,
   deleteShiftRemote,
   fetchAppData,
   loginRemote,
@@ -68,7 +69,13 @@ interface AppContextValue {
   syncing: boolean
   error: string | null
   user: SessionUser | null
-  login: (phone: string) => Promise<void>
+  login: (
+    phone: string,
+    password: string,
+    passwordConfirm?: string,
+  ) => Promise<void>
+  /** Phone-only probe: whether the manager must set a password or just sign in. */
+  checkLogin: (phone: string) => Promise<'setup' | 'login'>
   logout: () => void
   view: View
   setView: (v: View) => void
@@ -363,9 +370,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [handleAuthFailure, applyRemoteData])
 
+  const checkLogin = useCallback(async (phone: string) => {
+    const result = await checkLoginRemote(phone)
+    if (result.next !== 'setup' && result.next !== 'login') {
+      throw new Error('תגובת התחברות לא תקינה')
+    }
+    return result.next
+  }, [])
+
   const login = useCallback(
-    async (phone: string) => {
-      const session = await loginRemote(phone)
+    async (phone: string, password: string, passwordConfirm?: string) => {
+      const session = await loginRemote(phone, password, passwordConfirm)
       if (!session.token) throw new Error('לא התקבל טוקן התחברות')
       saveSession(session)
       setUser(session)
@@ -843,6 +858,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       error,
       user,
       login,
+      checkLogin,
       logout,
       view,
       setView,
@@ -884,6 +900,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       error,
       user,
       login,
+      checkLogin,
       logout,
       view,
       setView,
