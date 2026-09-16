@@ -49,7 +49,11 @@ export function ExportBar({ date, shiftType, lines, unassigned }: ExportBarProps
         buildWhatsAppText(
           date,
           shiftType,
-          lines.map((l) => ({ laneName: l.laneName, workers: l.workers })),
+          lines.map((l) => ({
+            laneName: l.laneName,
+            workers: l.workers,
+            notes: l.notes,
+          })),
         ),
       )
     }
