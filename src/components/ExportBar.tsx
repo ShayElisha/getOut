@@ -4,6 +4,7 @@ import {
   buildWhatsAppText,
   downloadBoardImage,
   openWhatsAppShare,
+  shareBoardImage,
   type ExportLaneLine,
 } from '../lib/export'
 import type { ShiftType } from '../types'
@@ -38,24 +39,33 @@ export function ExportBar({ date, shiftType, lines, unassigned }: ExportBarProps
   const handleWhatsApp = async () => {
     setBusy(true)
     setError(null)
+    const text = buildWhatsAppText(
+      date,
+      shiftType,
+      lines.map((l) => ({
+        laneName: l.laneName,
+        workers: l.workers,
+        notes: l.notes,
+      })),
+    )
     try {
-      await downloadBoardImage(date, shiftType, lines, unassigned, undefined, meta)
+      const mode = await shareBoardImage(
+        date,
+        shiftType,
+        lines,
+        unassigned,
+        meta,
+        text,
+      )
+      if (mode === 'text') {
+        openWhatsAppShare(text)
+      }
     } catch (e) {
       console.error(e)
-      setError('הורדת המסמך נכשלה — נפתח שיתוף טקסט בלבד.')
+      setError('שיתוף המסמך נכשל — נפתח טקסט ב-WhatsApp.')
+      openWhatsAppShare(text)
     } finally {
       setBusy(false)
-      openWhatsAppShare(
-        buildWhatsAppText(
-          date,
-          shiftType,
-          lines.map((l) => ({
-            laneName: l.laneName,
-            workers: l.workers,
-            notes: l.notes,
-          })),
-        ),
-      )
     }
   }
 

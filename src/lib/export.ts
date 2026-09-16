@@ -141,6 +141,99 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
 }
 
+function isTouchMobile(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return true
+  // iPadOS desktop UA
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+}
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  const [header, base64] = dataUrl.split(',')
+  if (!base64) {
+    throw new Error('יצירת התמונה נכשלה')
+  }
+  const mime = /data:([^;]+)/.exec(header)?.[1] || 'image/png'
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  return new Blob([bytes], { type: mime })
+}
+
+async function tryShareFile(
+  file: File,
+  opts: { title?: string; text?: string } = {},
+): Promise<boolean> {
+  if (typeof navigator.share !== 'function') return false
+  const payload: ShareData = {
+    files: [file],
+    title: opts.title || 'שיבוץ שער יציאה',
+    text: opts.text,
+  }
+  try {
+    if (
+      typeof navigator.canShare === 'function' &&
+      !navigator.canShare(payload)
+    ) {
+      return false
+    }
+    await navigator.share(payload)
+    return true
+  } catch (err) {
+    // User cancelled the sheet — treat as handled (don't fall through to download).
+    if (err instanceof Error && err.name === 'AbortError') return true
+    return false
+  }
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): string {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.rel = 'noopener'
+  a.style.display = 'none'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  // Keep URL alive long enough for the download / new-tab open.
+  window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  return url
+}
+
+/**
+ * Save PNG on desktop via download; on phones use the system share sheet
+ * (Save Image / Files) because `<a download>` is unreliable there.
+ */
+async function savePngBlob(
+  blob: Blob,
+  filename: string,
+  shareText?: string,
+): Promise<void> {
+  const file = new File([blob], filename, { type: 'image/png' })
+
+  if (isTouchMobile()) {
+    const shared = await tryShareFile(file, {
+      title: 'שיבוץ שער יציאה',
+      text: shareText,
+    })
+    if (shared) return
+
+    // Share unavailable / blocked after async capture — open image so user can
+    // long-press → Save, or use the browser's download UI.
+    const url = triggerBlobDownload(blob, filename)
+    const opened = window.open(url, '_blank', 'noopener,noreferrer')
+    if (!opened) {
+      // Popup blocked: navigate as last resort.
+      window.location.assign(url)
+    }
+    return
+  }
+
+  triggerBlobDownload(blob, filename)
+}
+
 export async function captureSchedulePng(
   date: string,
   shiftType: ShiftType,
@@ -155,8 +248,10 @@ export async function captureSchedulePng(
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
 
   try {
+    // Slightly lower scale on phones to avoid memory pressure / blank capture.
+    const scale = isTouchMobile() ? 1.5 : 2
     const dataUrl = await domToPng(node, {
-      scale: 2,
+      scale,
       backgroundColor: '#ffffff',
       quality: 1,
     })
@@ -179,13 +274,29 @@ export async function downloadBoardImage(
 ): Promise<void> {
   const dataUrl = await captureSchedulePng(date, shiftType, lines, unassigned, meta)
   const name = filename ?? `shibutz-official-${date}-${shiftType}.png`
-  const a = document.createElement('a')
-  a.href = dataUrl
-  a.download = name
-  a.rel = 'noopener'
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
+  await savePngBlob(dataUrlToBlob(dataUrl), name)
+}
+
+/** Prefer sharing the PNG (WhatsApp / Files); fall back to text-only WhatsApp. */
+export async function shareBoardImage(
+  date: string,
+  shiftType: ShiftType,
+  lines: ExportLaneLine[],
+  unassigned: string[] = [],
+  meta: ExportMeta = {},
+  text?: string,
+): Promise<'shared' | 'text'> {
+  const dataUrl = await captureSchedulePng(date, shiftType, lines, unassigned, meta)
+  const name = `shibutz-official-${date}-${shiftType}.png`
+  const blob = dataUrlToBlob(dataUrl)
+  const file = new File([blob], name, { type: 'image/png' })
+  const shared = await tryShareFile(file, {
+    title: 'שיבוץ שער יציאה',
+    text,
+  })
+  if (shared) return 'shared'
+  await savePngBlob(blob, name, text)
+  return 'text'
 }
 
 export function buildWhatsAppText(
