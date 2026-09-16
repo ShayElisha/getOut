@@ -53,8 +53,8 @@ export const SHIFT_TYPE_LABELS: Record<ShiftType, string> = {
 
 /** Display hours for each shift window */
 export const SHIFT_WINDOW_LABELS: Record<ShiftType, string> = {
-  morning: '06:00–15:00',
-  afternoon: '15:00–21:30',
+  morning: '06:00–14:30',
+  afternoon: '14:30–21:30',
   night: '21:30–06:00',
 }
 
@@ -64,7 +64,7 @@ function toDateISO(d: Date): string {
 
 /**
  * Current operational shift by clock:
- * morning until 15:00, afternoon until 21:30, night until 06:00.
+ * morning 06:00–14:30, afternoon 14:30–21:30, night 21:30–06:00.
  * Night after midnight still belongs to the previous calendar date.
  */
 export function getCurrentShiftContext(now = new Date()): {
@@ -74,7 +74,7 @@ export function getCurrentShiftContext(now = new Date()): {
 } {
   const minutes = now.getHours() * 60 + now.getMinutes()
   const morningStart = 6 * 60
-  const afternoonStart = 15 * 60
+  const afternoonStart = 14 * 60 + 30
   const nightStart = 21 * 60 + 30
 
   if (minutes >= morningStart && minutes < afternoonStart) {
