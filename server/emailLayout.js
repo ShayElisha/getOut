@@ -32,14 +32,24 @@ export function appDisplayName() {
 }
 
 export function appPublicUrl() {
-  const raw = process.env.APP_URL || process.env.PUBLIC_APP_URL || ''
+  const raw =
+    process.env.APP_URL ||
+    process.env.PUBLIC_APP_URL ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '')
   return String(raw).replace(/\/+$/, '')
+}
+
+/** Prefer hosted logo on Vercel; CID only when the PNG exists next to the function. */
+export function logoImgSrc() {
+  const base = appPublicUrl()
+  if (base) return `${base}/gate-out-logo.png`
+  return null
 }
 
 /** Inline CID attachment for the brand logo (when file exists). */
 export function logoAttachment() {
-  if (!existsSync(LOGO_PATH)) return null
   try {
+    if (!existsSync(LOGO_PATH)) return null
     return {
       filename: 'gate-out-logo.png',
       content: readFileSync(LOGO_PATH),
@@ -53,12 +63,22 @@ export function logoAttachment() {
 }
 
 function logoHtmlBlock() {
-  const hasFile = existsSync(LOGO_PATH)
-  if (hasFile) {
+  const hosted = logoImgSrc()
+  if (hosted) {
     return `
+      <img src="${escapeHtml(hosted)}" width="56" height="56" alt="GATE OUT"
+        style="display:block;width:56px;height:56px;border:0;border-radius:12px;" />
+    `
+  }
+  try {
+    if (existsSync(LOGO_PATH)) {
+      return `
       <img src="cid:${LOGO_CID}" width="56" height="56" alt="GATE OUT"
         style="display:block;width:56px;height:56px;border:0;border-radius:12px;" />
     `
+    }
+  } catch {
+    /* ignore */
   }
   // Fallback mark (matches site favicon) when PNG is missing
   return `
