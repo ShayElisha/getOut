@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { LogIn } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { AppFooter } from '../components/AppFooter'
@@ -86,6 +87,16 @@ export function LoginPage() {
               </>
             )}
           </button>
+
+          <p className="text-center text-[11px] leading-relaxed text-ink-soft sm:text-xs">
+            בהתחברות חלה{' '}
+            <Link
+              to="/privacy"
+              className="font-bold text-brand underline underline-offset-2"
+            >
+              מדיניות השימוש והפרטיות
+            </Link>
+          </p>
         </form>
       </div>
 

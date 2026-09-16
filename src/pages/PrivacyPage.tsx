@@ -1,4 +1,5 @@
-import { Link } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { AppFooter } from '../components/AppFooter'
@@ -6,7 +7,15 @@ import { SectionCard } from '../components/ui'
 
 export function PrivacyPage() {
   const { user } = useApp()
+  const location = useLocation()
   const backTo = user ? '/' : '/login'
+
+  useEffect(() => {
+    const id = location.hash.replace(/^#/, '')
+    if (!id) return
+    const el = document.getElementById(id)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }, [location.hash])
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-4 py-8 sm:py-10">
@@ -21,26 +30,28 @@ export function PrivacyPage() {
       <SectionCard>
         <p className="ui-eyebrow mb-1">GATE OUT</p>
         <h1 className="font-display text-2xl font-bold tracking-tight text-brand-deep sm:text-3xl">
-          מדיניות פרטיות
+          מדיניות שימוש ופרטיות
         </h1>
         <p className="ui-subtitle mt-2 text-xs sm:text-sm">
           עדכון אחרון: ספטמבר 2026 · לשימוש פנימי בארגון
         </p>
 
         <div className="mt-6 space-y-5 text-sm leading-relaxed text-ink sm:text-[0.9375rem]">
-          <section>
+          <section id="terms" className="scroll-mt-6">
             <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
-              מטרת המערכת
+              מדיניות שימוש
             </h2>
             <p className="text-ink-soft">
               שיבוצון (GATE OUT) הוא כלי ארגוני פנימי לניהול שיבוץ בודקים בשער
-              יציאה. המידע במערכת משמש לתכנון משמרות, נוכחות ושיבוץ בלבד.
+              יציאה. השימוש במערכת מיועד לעובדים ומנהלים מורשים בלבד, ולמטרות
+              תפעול המשמרת בלבד. אין להעביר גישה או לייצא מידע מחוץ למעגל העבודה
+              הנדרש.
             </p>
           </section>
 
-          <section>
+          <section id="privacy" className="scroll-mt-6">
             <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
-              איזה מידע נאסף
+              פרטיות — איזה מידע נאסף
             </h2>
             <ul className="list-disc space-y-1 pr-5 text-ink-soft">
               <li>שם מלא ומספר טלפון של עובדים ומנהלים</li>
@@ -78,9 +89,8 @@ export function PrivacyPage() {
               אחריות המשתמש
             </h2>
             <p className="text-ink-soft">
-              השימוש במערכת מיועד לעובדים מורשים בלבד. באחריות המשתמש לשמור על
-              סודיות המידע האישי המוצג במערכת ולהשתמש בו רק למטרות תפעול
-              המשמרת.
+              באחריות המשתמש לשמור על סודיות המידע האישי המוצג במערכת ולהשתמש
+              בו רק למטרות תפעול המשמרת.
             </p>
           </section>
 

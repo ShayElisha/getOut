@@ -61,7 +61,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const moreActive = useMemo(() => MOBILE_MORE.includes(view), [view])
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-4 pb-28 pt-5 sm:px-6 sm:pt-7 lg:pb-10 lg:pt-9">
+    <div className="mx-auto flex min-h-dvh max-w-7xl flex-col px-4 pb-32 pt-5 sm:px-6 sm:pt-7 lg:pb-10 lg:pt-9">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 animate-fade-up sm:mb-8">
         <div>
           <p className="ui-eyebrow mb-1">GATE OUT</p>
