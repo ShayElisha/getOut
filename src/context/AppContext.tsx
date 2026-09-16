@@ -397,10 +397,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Redirect unauthenticated users away from app routes
   useEffect(() => {
-    if (!user && location.pathname !== '/login') {
+    const path = location.pathname.replace(/\/+$/, '') || '/'
+    const isPublic = path === '/login' || path === '/privacy'
+    if (!user && !isPublic) {
       navigate('/login', { replace: true })
     }
-    if (user && location.pathname === '/login') {
+    if (user && path === '/login') {
       navigate('/', { replace: true })
     }
   }, [user, location.pathname, navigate])

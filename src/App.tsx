@@ -12,6 +12,7 @@ import { TrackingPage } from './pages/TrackingPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
 import { AuditPage } from './pages/AuditPage'
 import { LoginPage } from './pages/LoginPage'
+import { PrivacyPage } from './pages/PrivacyPage'
 
 function ProtectedShell() {
   const { user, loading, data } = useApp()
@@ -46,6 +47,7 @@ export default function App() {
     <AppProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/privacy" element={<PrivacyPage />} />
         <Route path="/*" element={<ProtectedShell />} />
       </Routes>
     </AppProvider>

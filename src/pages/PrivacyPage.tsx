@@ -1,0 +1,102 @@
+import { Link } from 'react-router-dom'
+import { ArrowRight } from 'lucide-react'
+import { useApp } from '../context/AppContext'
+import { AppFooter } from '../components/AppFooter'
+import { SectionCard } from '../components/ui'
+
+export function PrivacyPage() {
+  const { user } = useApp()
+  const backTo = user ? '/' : '/login'
+
+  return (
+    <div className="mx-auto flex min-h-dvh max-w-2xl flex-col px-4 py-8 sm:py-10">
+      <Link
+        to={backTo}
+        className="mb-5 inline-flex w-fit items-center gap-1.5 text-sm font-semibold text-brand hover:text-brand-deep"
+      >
+        <ArrowRight className="size-4" aria-hidden />
+        חזרה
+      </Link>
+
+      <SectionCard>
+        <p className="ui-eyebrow mb-1">GATE OUT</p>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-brand-deep sm:text-3xl">
+          מדיניות פרטיות
+        </h1>
+        <p className="ui-subtitle mt-2 text-xs sm:text-sm">
+          עדכון אחרון: ספטמבר 2026 · לשימוש פנימי בארגון
+        </p>
+
+        <div className="mt-6 space-y-5 text-sm leading-relaxed text-ink sm:text-[0.9375rem]">
+          <section>
+            <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
+              מטרת המערכת
+            </h2>
+            <p className="text-ink-soft">
+              שיבוצון (GATE OUT) הוא כלי ארגוני פנימי לניהול שיבוץ בודקים בשער
+              יציאה. המידע במערכת משמש לתכנון משמרות, נוכחות ושיבוץ בלבד.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
+              איזה מידע נאסף
+            </h2>
+            <ul className="list-disc space-y-1 pr-5 text-ink-soft">
+              <li>שם מלא ומספר טלפון של עובדים ומנהלים</li>
+              <li>הסמכות, סטטוס פעילות ותפקיד ניהולי</li>
+              <li>נתוני משמרות: תאריך, סוג משמרת, נוכחות ושיבוץ לעמדות</li>
+              <li>הערות שיבוץ (אם הוזנו) ויומן פעולות מערכת (למשל התחברות ושמירה)</li>
+            </ul>
+          </section>
+
+          <section>
+            <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
+              שימוש במידע
+            </h2>
+            <p className="text-ink-soft">
+              המידע משמש לאימות התחברות מנהלים, יצירת ועדכון שיבוצים, הצגת
+              היסטוריה וניתוחים פנימיים, ושיתוף שיבוץ (למשל בוואטסאפ) לפי בחירת
+              המשתמש המורשה. אין שימוש במידע לפרסום או למסירה לצדדים שלישיים
+              שאינם חלק מהפעלת המערכת.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
+              אחסון וגישה
+            </h2>
+            <p className="text-ink-soft">
+              הנתונים נשמרים בשרת הארגון ובמכשיר המשתמש (למשל מטמון/טיוטת
+              שיבוץ מקומית). גישה למערכת מוגבלת למנהלים מורשים. יש להימנע
+              משיתוף פרטי התחברות או ייצוא מידע מחוץ למעגל העבודה הנדרש.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
+              אחריות המשתמש
+            </h2>
+            <p className="text-ink-soft">
+              השימוש במערכת מיועד לעובדים מורשים בלבד. באחריות המשתמש לשמור על
+              סודיות המידע האישי המוצג במערכת ולהשתמש בו רק למטרות תפעול
+              המשמרת.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="mb-1.5 font-display text-base font-bold text-brand-deep">
+              יצירת קשר
+            </h2>
+            <p className="text-ink-soft">
+              לשאלות בנוגע לפרטיות או לעדכון/מחיקת נתונים — יש לפנות למנהל
+              המערכת בארגון.
+            </p>
+          </section>
+        </div>
+      </SectionCard>
+
+      <AppFooter className="mt-10" />
+    </div>
+  )
+}
