@@ -76,6 +76,8 @@ interface AppContextValue {
   setShiftStep: (s: ShiftStep) => void
   draft: ShiftDraft | null
   startShift: () => void
+  /** Discard in-progress shift draft and return home */
+  discardDraft: () => void
   updateDraftMeta: (patch: Partial<Pick<ShiftDraft, 'date' | 'shiftType'>>) => void
   toggleLane: (laneId: string) => void
   toggleWorker: (workerId: string) => void
@@ -390,6 +392,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     setShiftStep('lanes')
     setView('shift')
+  }, [setShiftStep, setView])
+
+  const discardDraft = useCallback(() => {
+    setDraft(null)
+    clearDraftStorage()
+    setShiftStep('lanes')
+    setView('home')
   }, [setShiftStep, setView])
 
   const updateDraftMeta = useCallback(
@@ -735,6 +744,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setShiftStep,
       draft,
       startShift,
+      discardDraft,
       updateDraftMeta,
       toggleLane,
       toggleWorker,
@@ -773,6 +783,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setShiftStep,
       draft,
       startShift,
+      discardDraft,
       updateDraftMeta,
       toggleLane,
       toggleWorker,

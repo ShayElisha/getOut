@@ -44,6 +44,7 @@ export function ShiftPage() {
     addSlotToLane,
     saveCurrentShift,
     startShift,
+    discardDraft,
   } = useApp()
 
   const [extraFlow, setExtraFlow] = useState<ExtraFlow>('closed')
@@ -192,6 +193,17 @@ export function ShiftPage() {
             ))}
           </select>
         </label>
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm('לבטל את טיוטת השיבוץ? הפעולה לא ניתנת לשחזור.')) {
+              discardDraft()
+            }
+          }}
+          className="mr-auto rounded-lg px-2.5 py-1.5 text-xs font-semibold text-hard hover:bg-hard-soft sm:px-3 sm:py-2 sm:text-sm"
+        >
+          בטל טיוטה
+        </button>
       </div>
 
       <ol className="flex gap-1.5 sm:gap-2">
