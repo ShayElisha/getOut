@@ -11,6 +11,8 @@ import {
   Save,
   Plus,
   ArrowLeftRight,
+  Hand,
+  Trash2,
 } from 'lucide-react'
 import { isQualified, buildSameDayMorningContext, afternoonHandoffTier } from '../algorithm'
 import { useApp } from '../context/AppContext'
@@ -39,8 +41,10 @@ export function ShiftPage() {
     setAllActiveLanes,
     setAllActiveWorkers,
     runAutoAssign,
+    startManualAssign,
     updateAssignment,
     swapAssignments,
+    removeWorkerFromShift,
     addExtraWorkerToLane,
     addSlotToLane,
     saveCurrentShift,
@@ -106,6 +110,14 @@ export function ShiftPage() {
     setExtraFlow('closed')
     setSaveFlash(false)
     runAutoAssign()
+  }
+
+  const handleManualAssign = () => {
+    // Skip surplus modal — manual board starts with everyone unassigned on purpose.
+    setExtraAskedOnce(true)
+    setExtraFlow('closed')
+    setSaveFlash(false)
+    startManualAssign()
   }
 
   // Surplus prompt — only once after each auto-assign
@@ -396,6 +408,15 @@ export function ShiftPage() {
               <Sparkles className="size-3.5 sm:size-4" />
               שבץ אוטומטית
             </button>
+            <button
+              type="button"
+              disabled={draft.presentWorkerIds.length === 0}
+              onClick={handleManualAssign}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-card px-3.5 py-2 text-xs font-bold text-brand shadow-sm hover:bg-surface disabled:opacity-40 sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
+            >
+              <Hand className="size-3.5 sm:size-4" />
+              שבץ ידני
+            </button>
           </div>
         </section>
       )}
@@ -639,21 +660,32 @@ export function ShiftPage() {
                                   )}
                               </select>
                               {workerId && (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setSwapTarget({
-                                      laneId,
-                                      slotIndex,
-                                      workerId,
-                                    })
-                                  }
-                                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#d5dee8] bg-white px-2 py-1.5 text-[10px] font-bold text-[#1a4a6e] hover:border-[#1a4a6e] hover:bg-[#1a4a6e] hover:text-white sm:text-[11px]"
-                                  title="החלף עם נתיב אחר"
-                                >
-                                  <ArrowLeftRight className="size-3.5" />
-                                  החלף
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSwapTarget({
+                                        laneId,
+                                        slotIndex,
+                                        workerId,
+                                      })
+                                    }
+                                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#d5dee8] bg-white px-2 py-1.5 text-[10px] font-bold text-[#1a4a6e] hover:border-[#1a4a6e] hover:bg-[#1a4a6e] hover:text-white sm:text-[11px]"
+                                    title="החלף עם נתיב אחר"
+                                  >
+                                    <ArrowLeftRight className="size-3.5" />
+                                    החלף
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeWorkerFromShift(workerId)}
+                                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-hard/30 bg-white px-2 py-1.5 text-[10px] font-bold text-hard hover:border-hard hover:bg-hard hover:text-white sm:text-[11px]"
+                                    title="הסר מהשיבוץ ומהנוכחות"
+                                  >
+                                    <Trash2 className="size-3.5" />
+                                    הסר
+                                  </button>
+                                </>
                               )}
                             </div>
                             {selectedLacksCert && (
@@ -683,17 +715,33 @@ export function ShiftPage() {
             </div>
             {draft.unassignedWorkerIds.length > 0 && (
               <div className="border-t border-line bg-[#f3f6f9] px-3.5 py-2.5 sm:px-5 sm:py-3">
-                <p className="mb-0.5 flex items-center gap-1.5 text-[10px] font-bold text-[#3d4f66] sm:mb-1 sm:text-xs">
+                <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold text-[#3d4f66] sm:mb-2 sm:text-xs">
                   <UserMinus className="size-3 sm:size-3.5" />
-                  לא שובצו
+                  לא שובצו — ניתן להסיר מהמשמרת בלי לשבץ מחדש
                 </p>
-                <p className="text-xs text-[#0f1c2e] sm:text-sm">
-                  {draft.unassignedWorkerIds
-                    .map(
-                      (id) => data.workers.find((w) => w.id === id)?.fullName ?? id,
+                <ul className="flex flex-wrap gap-1.5">
+                  {draft.unassignedWorkerIds.map((id) => {
+                    const name =
+                      data.workers.find((w) => w.id === id)?.fullName ?? id
+                    return (
+                      <li
+                        key={id}
+                        className="inline-flex items-center gap-1 rounded-lg border border-[#d5dee8] bg-white px-2 py-1 text-xs text-[#0f1c2e]"
+                      >
+                        <span>{name}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeWorkerFromShift(id)}
+                          className="inline-flex size-5 items-center justify-center rounded-md text-hard hover:bg-hard-soft"
+                          title={`הסר את ${name} מהשיבוץ`}
+                          aria-label={`הסר את ${name} מהשיבוץ`}
+                        >
+                          <X className="size-3.5" />
+                        </button>
+                      </li>
                     )
-                    .join(' · ')}
-                </p>
+                  })}
+                </ul>
               </div>
             )}
           </div>

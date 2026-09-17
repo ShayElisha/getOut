@@ -99,12 +99,19 @@ interface AppContextValue {
   setAllActiveLanes: (on: boolean) => void
   setAllActiveWorkers: (on: boolean) => void
   runAutoAssign: () => void
+  /** Open an empty board so managers can place present workers by hand. */
+  startManualAssign: () => void
   updateAssignment: (laneId: string, slotIndex: number, workerId: string | null) => void
   /** Swap two filled slots between lanes (or within the same lane). */
   swapAssignments: (
     a: { laneId: string; slotIndex: number },
     b: { laneId: string; slotIndex: number },
   ) => void
+  /**
+   * Remove a worker from the current shift: clears every slot they occupy
+   * and drops them from present attendance so save is not blocked.
+   */
+  removeWorkerFromShift: (workerId: string) => void
   updateLaneNotes: (laneId: string, notes: string) => void
   addExtraWorkerToLane: (laneId: string, workerId: string) => void
   addSlotToLane: (laneId: string) => void
@@ -548,14 +555,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDraft((d) => {
       if (!d) return d
       const has = d.presentWorkerIds.includes(workerId)
+      if (!has) {
+        return {
+          ...d,
+          presentWorkerIds: [...d.presentWorkerIds, workerId],
+        }
+      }
+      const presentWorkerIds = d.presentWorkerIds.filter((id) => id !== workerId)
+      const assignments = padAssignments(d.assignments, data.lanes, d.activeLaneIds).map(
+        (a) => {
+          const workerIds = a.workerIds.map((id) => (id === workerId ? '' : id))
+          const lane = data.lanes.find((l) => l.id === a.laneId)
+          const std = lane?.staffingStandard ?? 1
+          while (workerIds.length > std && !workerIds[workerIds.length - 1]) {
+            workerIds.pop()
+          }
+          return { ...a, workerIds }
+        },
+      )
+      const assignedIds = new Set(assignments.flatMap((a) => a.workerIds.filter(Boolean)))
       return {
         ...d,
-        presentWorkerIds: has
-          ? d.presentWorkerIds.filter((id) => id !== workerId)
-          : [...d.presentWorkerIds, workerId],
+        presentWorkerIds,
+        assignments,
+        unassignedWorkerIds: presentWorkerIds.filter((id) => !assignedIds.has(id)),
       }
     })
-  }, [])
+  }, [data.lanes])
 
   const setAllActiveLanes = useCallback(
     (on: boolean) => {
@@ -612,6 +638,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     setShiftStep('board')
   }, [data.history, data.lanes, data.workers])
+
+  const startManualAssign = useCallback(() => {
+    setDraft((d) => {
+      if (!d) return d
+      // Keep existing lane notes if the user already edited a draft board.
+      const notesByLane = new Map(
+        d.assignments
+          .filter((a) => a.notes?.trim())
+          .map((a) => [a.laneId, a.notes!] as const),
+      )
+      const empty = padAssignments([], data.lanes, d.activeLaneIds).map((a) =>
+        notesByLane.has(a.laneId) ? { ...a, notes: notesByLane.get(a.laneId) } : a,
+      )
+      return {
+        ...d,
+        assignments: empty,
+        warnings: [],
+        unassignedWorkerIds: [...d.presentWorkerIds],
+      }
+    })
+    setShiftStep('board')
+  }, [data.lanes])
 
   const updateAssignment = useCallback(
     (laneId: string, slotIndex: number, workerId: string | null) => {
@@ -747,6 +795,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (!target) return d
         target.workerIds.push('')
         return { ...d, assignments: padded }
+      })
+    },
+    [data.lanes],
+  )
+
+  const removeWorkerFromShift = useCallback(
+    (workerId: string) => {
+      setDraft((d) => {
+        if (!d) return d
+        const presentWorkerIds = d.presentWorkerIds.filter((id) => id !== workerId)
+        const assignments = padAssignments(d.assignments, data.lanes, d.activeLaneIds).map(
+          (a) => {
+            const workerIds = a.workerIds.map((id) => (id === workerId ? '' : id))
+            const lane = data.lanes.find((l) => l.id === a.laneId)
+            const std = lane?.staffingStandard ?? 1
+            while (workerIds.length > std && !workerIds[workerIds.length - 1]) {
+              workerIds.pop()
+            }
+            return { ...a, workerIds }
+          },
+        )
+        const assignedIds = new Set(assignments.flatMap((a) => a.workerIds.filter(Boolean)))
+        return {
+          ...d,
+          presentWorkerIds,
+          assignments,
+          unassignedWorkerIds: presentWorkerIds.filter((id) => !assignedIds.has(id)),
+        }
       })
     },
     [data.lanes],
@@ -953,8 +1029,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllActiveLanes,
       setAllActiveWorkers,
       runAutoAssign,
+      startManualAssign,
       updateAssignment,
       swapAssignments,
+      removeWorkerFromShift,
       updateLaneNotes,
       addExtraWorkerToLane,
       addSlotToLane,
@@ -998,8 +1076,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setAllActiveLanes,
       setAllActiveWorkers,
       runAutoAssign,
+      startManualAssign,
       updateAssignment,
       swapAssignments,
+      removeWorkerFromShift,
       updateLaneNotes,
       addExtraWorkerToLane,
       addSlotToLane,
