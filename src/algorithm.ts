@@ -117,6 +117,8 @@ interface WorkerHistoryProfile {
   dayEasyInSameShiftType: number
   laneCounts: Map<string, number>
   lastLaneIds: Set<string>
+  /** Lanes held on previous calendar day in the same shift type (morning→morning etc.) */
+  prevDaySameShiftLaneIds: Set<string>
   laneRecency: Map<string, number>
   lastWasHard: boolean
   lastShiftType: ShiftType | null
@@ -128,8 +130,10 @@ function buildWorkerProfile(
   history: ShiftSchedule[],
   lanes: Lane[],
   currentShiftType: ShiftType,
+  currentDate: string,
 ): WorkerHistoryProfile {
   const laneMap = new Map(lanes.map((l) => [l.id, l]))
+  const prevDate = previousLocalDate(currentDate)
   const profile: WorkerHistoryProfile = {
     load: 0,
     loadInSameShiftType: 0,
@@ -139,6 +143,7 @@ function buildWorkerProfile(
     dayEasyInSameShiftType: 0,
     laneCounts: new Map(),
     lastLaneIds: new Set(),
+    prevDaySameShiftLaneIds: new Set(),
     laneRecency: new Map(),
     lastWasHard: false,
     lastShiftType: null,
@@ -157,6 +162,14 @@ function buildWorkerProfile(
       profile.laneCounts.set(lane.id, (profile.laneCounts.get(lane.id) ?? 0) + 1)
       if (!profile.laneRecency.has(lane.id)) {
         profile.laneRecency.set(lane.id, shiftIndex)
+      }
+
+      if (
+        prevDate &&
+        shift.date === prevDate &&
+        shift.shiftType === currentShiftType
+      ) {
+        profile.prevDaySameShiftLaneIds.add(lane.id)
       }
 
       const points = effectiveIntensityScore(lane.intensity, shift.shiftType)
@@ -339,10 +352,11 @@ function easyStaffingRemaining(otherOpen: Lane[]): number {
  * Ranking for a lane (lower = better). Order is intentional and stable:
  * 1) afternoon handoff
  * 2) night→afternoon recovery (day after night only)
- * 3) avoid immediate same-lane repeat
- * 4) lane frequency / recency (rotation)
- * 5) load / hard balance by intensity
- * 6) versatility only if gap ≥ VERSATILITY_MIN_GAP (avoid noise)
+ * 3) avoid same lane as yesterday's same shift type (morning→morning etc.)
+ * 4) avoid immediate same-lane repeat from last placement
+ * 5) lane frequency / recency (rotation)
+ * 6) load / hard balance by intensity
+ * 7) versatility only if gap ≥ VERSATILITY_MIN_GAP (avoid noise)
  */
 function compareForLane(
   a: Worker,
@@ -375,7 +389,12 @@ function compareForLane(
     return bRec - aRec
   }
 
-  // Rotation: do not bounce back to the same lane when another candidate exists.
+  // Strong rotation: same shift type yesterday on this lane (e.g. morning→morning).
+  const aPrevDay = pa.prevDaySameShiftLaneIds.has(lane.id) ? 1 : 0
+  const bPrevDay = pb.prevDaySameShiftLaneIds.has(lane.id) ? 1 : 0
+  if (aPrevDay !== bPrevDay) return aPrevDay - bPrevDay
+
+  // Also avoid bouncing back to the absolute last placement lane.
   const aWasLastHere = pa.lastLaneIds.has(lane.id) ? 1 : 0
   const bWasLastHere = pb.lastLaneIds.has(lane.id) ? 1 : 0
   if (aWasLastHere !== bWasLastHere) return aWasLastHere - bWasLastHere
@@ -538,7 +557,11 @@ function buildPlacementReasons(
   }
 
   const timesHere = p.laneCounts.get(lane.id) ?? 0
-  if (p.lastLaneIds.has(lane.id)) {
+  if (p.prevDaySameShiftLaneIds.has(lane.id)) {
+    reasons.push(
+      `הייתה בנתיב זה במשמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול — בדרך כלל נמנעים מחזרה באותו סוג משמרת ביום העוקב (אין חלופה מספיקה)`,
+    )
+  } else if (p.lastLaneIds.has(lane.id)) {
     reasons.push(
       'היה בנתיב זה בשיבוץ האחרון — בדרך כלל נמנעים מחזרה מיידית (אין חלופה טובה יותר בדירוג)',
     )
@@ -602,7 +625,13 @@ function buildPlacementReasons(
         diffs.push(`נשמר ${rival.fullName} למנוחה אחרי לילה`)
       }
     }
-    if (p.lastLaneIds.has(lane.id) !== rp.lastLaneIds.has(lane.id)) {
+    if (p.prevDaySameShiftLaneIds.has(lane.id) !== rp.prevDaySameShiftLaneIds.has(lane.id)) {
+      if (!p.prevDaySameShiftLaneIds.has(lane.id)) {
+        diffs.push(
+          `לא הייתה בנתיב זה במשמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול (בניגוד ל${rival.fullName})`,
+        )
+      }
+    } else if (p.lastLaneIds.has(lane.id) !== rp.lastLaneIds.has(lane.id)) {
       if (!p.lastLaneIds.has(lane.id)) {
         diffs.push(`לא חזר מיד לאותו נתיב (בניגוד ל${rival.fullName})`)
       }
@@ -662,7 +691,7 @@ export function runAssignmentAlgorithm(
   for (const w of presentWorkers) {
     profiles.set(
       w.id,
-      buildWorkerProfile(w.id, relevant, allLanes, currentShiftType),
+      buildWorkerProfile(w.id, relevant, allLanes, currentShiftType, currentDate),
     )
   }
 
@@ -737,6 +766,17 @@ export function runAssignmentAlgorithm(
       }
     }
 
+    // Same shift type yesterday on this lane → exclude when alternatives exist
+    // (fixes morning→morning / afternoon→afternoon repeats like שיראל).
+    {
+      const rotated = pool.filter(
+        (w) => !profiles.get(w.id)!.prevDaySameShiftLaneIds.has(lane.id),
+      )
+      if (rotated.length >= lane.staffingStandard) {
+        pool = rotated
+      }
+    }
+
     const ranked = shuffle(pool).sort((a, b) =>
       compareForLane(
         a,
@@ -787,6 +827,15 @@ export function runAssignmentAlgorithm(
           )
         }
       }
+    }
+
+    for (const id of picked) {
+      const prof = profiles.get(id)
+      if (!prof?.prevDaySameShiftLaneIds.has(lane.id)) continue
+      const name = workerById.get(id)?.fullName ?? id
+      warnings.push(
+        `חזרה לנתיב: "${name}" שובץ שוב ב"${lane.name}" אחרי משמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול (אין מספיק חלופות)`,
+      )
     }
 
     if (
