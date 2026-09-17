@@ -322,8 +322,8 @@ export function ShiftPage() {
         <div className="rounded-xl border border-hard/30 bg-hard-soft px-3 py-2.5 text-xs text-hard sm:px-4 sm:py-3 sm:text-sm">
           <p className="font-bold">שיבוץ כפול לאותו תאריך ומשמרת</p>
           <p className="mt-1 opacity-90">
-            {shiftSlotConflictMessage(draft.date, draft.shiftType)} שנו את התאריך
-            או סוג המשמרת, או פתחו את השיבוץ הקיים מההיסטוריה.
+            {shiftSlotConflictMessage(draft.date, draft.shiftType)} בחרו תאריך
+            או סוג משמרת פנויים למעלה, או פתחו את השיבוץ הקיים מההיסטוריה.
           </p>
         </div>
       )}

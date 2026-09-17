@@ -44,7 +44,6 @@ import {
   findShiftForSlot,
   getCurrentShiftContext,
   shiftSlotConflictMessage,
-  SHIFT_TYPE_LABELS,
 } from '../constants'
 import { pathForView, viewFromPath } from '../routes'
 import { createSeedData, isDefaultManager } from '../storage'
@@ -524,46 +523,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const startShift = useCallback(() => {
     const date = todayISO()
-    const preferred = defaultShiftType()
-    const occupiedPreferred = findShiftForSlot(data.history, date, preferred)
-    if (occupiedPreferred) {
+    let shiftType = defaultShiftType()
+    // Prefer a free slot for today so work can start immediately, but never
+    // refuse to open — user can always pick another date/type on the shift page.
+    if (findShiftForSlot(data.history, date, shiftType)) {
       const freeType = (
         ['morning', 'afternoon', 'night'] as const
       ).find((t) => !findShiftForSlot(data.history, date, t))
-      if (!freeType) {
-        window.alert(
-          `כל משמרות היום (${new Date(`${date}T12:00:00`).toLocaleDateString('he-IL')}) כבר משובצות.\nניתן לפתוח שיבוץ קיים מההיסטוריה או מעמוד הבית.`,
-        )
-        setView('home')
-        return
-      }
-      const openExisting = window.confirm(
-        `${shiftSlotConflictMessage(date, preferred)}\n\nלחצו אישור כדי לפתוח את השיבוץ הקיים לעריכה.\nלחצו ביטול כדי להתחיל שיבוץ למשמרת ${SHIFT_TYPE_LABELS[freeType]} (פנויה היום).`,
-      )
-      if (openExisting) {
-        navigate(`/history/${encodeURIComponent(occupiedPreferred.id)}`)
-        return
-      }
-      adoptCleanDraft({
-        id: uuid(),
-        date,
-        shiftType: freeType,
-        activeLaneIds: [],
-        presentWorkerIds: [],
-        assignments: [],
-        warnings: [],
-        unassignedWorkerIds: [],
-        explanations: [],
-      })
-      setShiftStep('lanes')
-      setView('shift')
-      return
+      if (freeType) shiftType = freeType
     }
 
     adoptCleanDraft({
       id: uuid(),
       date,
-      shiftType: preferred,
+      shiftType,
       activeLaneIds: [],
       presentWorkerIds: [],
       assignments: [],
@@ -573,7 +546,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     setShiftStep('lanes')
     setView('shift')
-  }, [adoptCleanDraft, data.history, navigate, setShiftStep, setView])
+  }, [adoptCleanDraft, data.history, setShiftStep, setView])
 
   const discardDraft = useCallback(() => {
     draftBaselineRef.current = null
