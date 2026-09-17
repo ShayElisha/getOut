@@ -20,7 +20,11 @@ import {
 } from 'lucide-react'
 import { isQualified, buildSameDayMorningContext, afternoonHandoffTier } from '../algorithm'
 import { useApp } from '../context/AppContext'
-import { SHIFT_TYPE_LABELS } from '../constants'
+import {
+  SHIFT_TYPE_LABELS,
+  findShiftForSlot,
+  shiftSlotConflictMessage,
+} from '../constants'
 import { CertChips, IntensityBadge } from '../components/ui'
 import { ExportBar } from '../components/ExportBar'
 import type { ShiftType } from '../types'
@@ -135,6 +139,16 @@ export function ShiftPage() {
     return [header, ...blocks].join('\n\n')
   }, [draft, explanationGroups])
 
+  const slotConflict = useMemo(() => {
+    if (!draft) return null
+    return findShiftForSlot(
+      data.history,
+      draft.date,
+      draft.shiftType,
+      draft.id,
+    )
+  }, [draft, data.history])
+
   const copyExplanations = async () => {
     if (!explanationText) return
     try {
@@ -202,6 +216,10 @@ export function ShiftPage() {
 
   const handleSave = async () => {
     if (!draft) return
+    if (slotConflict) {
+      window.alert(shiftSlotConflictMessage(draft.date, draft.shiftType))
+      return
+    }
     if (draft.unassignedWorkerIds.length > 0) {
       setSaveFlash(false)
       window.alert(
@@ -262,11 +280,17 @@ export function ShiftPage() {
               updateDraftMeta({ shiftType: e.target.value as ShiftType })
             }
           >
-            {(Object.keys(SHIFT_TYPE_LABELS) as ShiftType[]).map((k) => (
-              <option key={k} value={k}>
-                {SHIFT_TYPE_LABELS[k]}
-              </option>
-            ))}
+            {(Object.keys(SHIFT_TYPE_LABELS) as ShiftType[]).map((k) => {
+              const taken = Boolean(
+                findShiftForSlot(data.history, draft.date, k, draft.id),
+              )
+              return (
+                <option key={k} value={k} disabled={taken}>
+                  {SHIFT_TYPE_LABELS[k]}
+                  {taken ? ' (קיים)' : ''}
+                </option>
+              )
+            })}
           </select>
         </label>
         <button
@@ -281,6 +305,16 @@ export function ShiftPage() {
           בטל טיוטה
         </button>
       </div>
+
+      {slotConflict && (
+        <div className="rounded-xl border border-hard/30 bg-hard-soft px-3 py-2.5 text-xs text-hard sm:px-4 sm:py-3 sm:text-sm">
+          <p className="font-bold">שיבוץ כפול לאותו תאריך ומשמרת</p>
+          <p className="mt-1 opacity-90">
+            {shiftSlotConflictMessage(draft.date, draft.shiftType)} שנו את התאריך
+            או סוג המשמרת, או פתחו את השיבוץ הקיים מההיסטוריה.
+          </p>
+        </div>
+      )}
 
       <ol className="flex gap-1.5 sm:gap-2">
         {STEPS.map((s, i) => {
@@ -579,14 +613,16 @@ export function ShiftPage() {
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={draft.unassignedWorkerIds.length > 0}
+                disabled={draft.unassignedWorkerIds.length > 0 || Boolean(slotConflict)}
                 title={
-                  draft.unassignedWorkerIds.length > 0
-                    ? 'יש בודקים שלא שובצו — לא ניתן לשמור'
-                    : undefined
+                  slotConflict
+                    ? 'כבר קיים שיבוץ לאותו תאריך ומשמרת'
+                    : draft.unassignedWorkerIds.length > 0
+                      ? 'יש בודקים שלא שובצו — לא ניתן לשמור'
+                      : undefined
                 }
                 className={`inline-flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm transition sm:px-3 sm:py-2 sm:text-sm ${
-                  draft.unassignedWorkerIds.length > 0
+                  draft.unassignedWorkerIds.length > 0 || slotConflict
                     ? 'cursor-not-allowed bg-brand/40'
                     : saveFlash
                       ? 'bg-ok'

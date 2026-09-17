@@ -51,6 +51,33 @@ export const SHIFT_TYPE_LABELS: Record<ShiftType, string> = {
   night: 'לילה',
 }
 
+/** Latest saved shift for a date + shift type, optionally ignoring one id (current draft). */
+export function findShiftForSlot(
+  history: { id: string; date: string; shiftType: ShiftType; updatedAt?: string }[],
+  date: string,
+  shiftType: ShiftType,
+  excludeId?: string,
+): { id: string; date: string; shiftType: ShiftType; updatedAt?: string } | null {
+  const matches = history.filter(
+    (h) =>
+      h.date === date &&
+      h.shiftType === shiftType &&
+      (!excludeId || h.id !== excludeId),
+  )
+  if (matches.length === 0) return null
+  return matches.sort((a, b) =>
+    (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''),
+  )[0]!
+}
+
+export function shiftSlotConflictMessage(
+  date: string,
+  shiftType: ShiftType,
+): string {
+  const dateLabel = new Date(`${date}T12:00:00`).toLocaleDateString('he-IL')
+  return `כבר קיים שיבוץ ל-${dateLabel} · משמרת ${SHIFT_TYPE_LABELS[shiftType]}. לא ניתן ליצור שיבוץ כפול לאותו תאריך ומשמרת.`
+}
+
 /** Display hours for each shift window */
 export const SHIFT_WINDOW_LABELS: Record<ShiftType, string> = {
   morning: '06:00–14:30',

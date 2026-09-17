@@ -40,7 +40,12 @@ import {
   saveShiftStep,
   type SessionUser,
 } from '../auth'
-import { getCurrentShiftContext } from '../constants'
+import {
+  findShiftForSlot,
+  getCurrentShiftContext,
+  shiftSlotConflictMessage,
+  SHIFT_TYPE_LABELS,
+} from '../constants'
 import { pathForView, viewFromPath } from '../routes'
 import { createSeedData, isDefaultManager } from '../storage'
 import type {
@@ -518,10 +523,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const startShift = useCallback(() => {
+    const date = todayISO()
+    const preferred = defaultShiftType()
+    const occupiedPreferred = findShiftForSlot(data.history, date, preferred)
+    if (occupiedPreferred) {
+      const freeType = (
+        ['morning', 'afternoon', 'night'] as const
+      ).find((t) => !findShiftForSlot(data.history, date, t))
+      if (!freeType) {
+        window.alert(
+          `כל משמרות היום (${new Date(`${date}T12:00:00`).toLocaleDateString('he-IL')}) כבר משובצות.\nניתן לפתוח שיבוץ קיים מההיסטוריה או מעמוד הבית.`,
+        )
+        setView('home')
+        return
+      }
+      const openExisting = window.confirm(
+        `${shiftSlotConflictMessage(date, preferred)}\n\nלחצו אישור כדי לפתוח את השיבוץ הקיים לעריכה.\nלחצו ביטול כדי להתחיל שיבוץ למשמרת ${SHIFT_TYPE_LABELS[freeType]} (פנויה היום).`,
+      )
+      if (openExisting) {
+        navigate(`/history/${encodeURIComponent(occupiedPreferred.id)}`)
+        return
+      }
+      adoptCleanDraft({
+        id: uuid(),
+        date,
+        shiftType: freeType,
+        activeLaneIds: [],
+        presentWorkerIds: [],
+        assignments: [],
+        warnings: [],
+        unassignedWorkerIds: [],
+        explanations: [],
+      })
+      setShiftStep('lanes')
+      setView('shift')
+      return
+    }
+
     adoptCleanDraft({
       id: uuid(),
-      date: todayISO(),
-      shiftType: defaultShiftType(),
+      date,
+      shiftType: preferred,
       activeLaneIds: [],
       presentWorkerIds: [],
       assignments: [],
@@ -531,7 +573,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     })
     setShiftStep('lanes')
     setView('shift')
-  }, [adoptCleanDraft, setShiftStep, setView])
+  }, [adoptCleanDraft, data.history, navigate, setShiftStep, setView])
 
   const discardDraft = useCallback(() => {
     draftBaselineRef.current = null
@@ -544,9 +586,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateDraftMeta = useCallback(
     (patch: Partial<Pick<ShiftDraft, 'date' | 'shiftType'>>) => {
-      setDraft((d) => (d ? { ...d, ...patch } : d))
+      setDraft((d) => {
+        if (!d) return d
+        const next = { ...d, ...patch }
+        const conflict = findShiftForSlot(
+          data.history,
+          next.date,
+          next.shiftType,
+          next.id,
+        )
+        if (conflict) {
+          window.alert(shiftSlotConflictMessage(next.date, next.shiftType))
+          return d
+        }
+        return next
+      })
     },
-    [],
+    [data.history],
   )
 
   const toggleLane = useCallback((laneId: string) => {
@@ -843,6 +899,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const saveCurrentShift = useCallback(async () => {
     if (!draft) return
+    const slotConflict = findShiftForSlot(
+      data.history,
+      draft.date,
+      draft.shiftType,
+      draft.id,
+    )
+    if (slotConflict) {
+      const message = shiftSlotConflictMessage(draft.date, draft.shiftType)
+      setError(message)
+      throw new Error(message)
+    }
     const assignedIds = new Set(
       draft.assignments.flatMap((a) => a.workerIds.filter(Boolean)),
     )
@@ -876,7 +943,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setSyncing(false)
     }
-  }, [draft, toSchedule, data.revision, handleAuthFailure])
+  }, [draft, toSchedule, data.history, data.revision, handleAuthFailure])
 
   const loadShiftFromHistory = useCallback(
     (id: string) => {

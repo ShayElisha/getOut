@@ -305,6 +305,36 @@ export function HomePage() {
                 </button>
               </div>
             </>
+          ) : currentShift ? (
+            <>
+              <h2 className="font-display text-xl font-bold sm:text-3xl">
+                המשמרת הנוכחית כבר משובצת
+              </h2>
+              <p className="mt-1.5 text-xs leading-relaxed text-white/80 sm:mt-2 sm:text-base">
+                קיים שיבוץ ל-{currentDateLabel} ·{' '}
+                {SHIFT_TYPE_LABELS[currentCtx.shiftType]}. לא ניתן ליצור שיבוץ
+                כפול לאותו תאריך ומשמרת — ערכו את הקיים או התחילו משמרת אחרת.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2 sm:mt-6 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => loadShiftFromHistory(currentShift.id)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-xs font-bold text-white shadow-md transition hover:brightness-110 sm:rounded-2xl sm:px-5 sm:py-3 sm:text-sm"
+                >
+                  <RotateCcw className="size-3.5 sm:size-4" />
+                  עריכת השיבוץ הקיים
+                  <ArrowLeft className="size-3.5 sm:size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={startShift}
+                  className="inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-xs font-semibold text-white backdrop-blur transition hover:bg-white/20 sm:rounded-2xl sm:px-5 sm:py-3 sm:text-sm"
+                >
+                  <Play className="size-3.5 fill-current sm:size-4" />
+                  משמרת אחרת היום
+                </button>
+              </div>
+            </>
           ) : (
             <>
               <h2 className="font-display text-xl font-bold sm:text-3xl">

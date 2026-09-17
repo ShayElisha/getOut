@@ -617,6 +617,21 @@ export async function upsertShift(id, body, actor, options = {}) {
   const schedule = { ...body, id }
   delete schedule.actor
   delete schedule.expectedRevision
+
+  const conflict = (state.history || []).find(
+    (h) =>
+      h.id !== schedule.id &&
+      h.date === schedule.date &&
+      h.shiftType === schedule.shiftType,
+  )
+  if (conflict) {
+    const err = new Error(
+      'כבר קיים שיבוץ לאותו תאריך ואותה משמרת. לא ניתן ליצור שיבוץ כפול.',
+    )
+    err.status = 400
+    throw err
+  }
+
   const idx = state.history.findIndex((h) => h.id === schedule.id)
   const isNew = idx === -1
   const history =
