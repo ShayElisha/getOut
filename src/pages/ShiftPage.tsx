@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   ChevronLeft,
@@ -64,6 +64,7 @@ export function ShiftPage() {
   const [saveFlash, setSaveFlash] = useState(false)
   const [explainOpen, setExplainOpen] = useState(true)
   const [copyFlash, setCopyFlash] = useState(false)
+  const explainRef = useRef<HTMLDivElement | null>(null)
   const [swapTarget, setSwapTarget] = useState<{
     laneId: string
     slotIndex: number
@@ -163,7 +164,12 @@ export function ShiftPage() {
     setExtraAskedOnce(false)
     setExtraFlow('closed')
     setSaveFlash(false)
+    setExplainOpen(true)
     runAutoAssign()
+    // Scroll to rationale after the board paints (surplus modal may open above it).
+    window.setTimeout(() => {
+      explainRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
   }
 
   const handleManualAssign = () => {
@@ -492,15 +498,21 @@ export function ShiftPage() {
           )}
 
           {explanationGroups.length > 0 && (
-            <div className="rounded-xl border border-brand/20 bg-card px-3 py-2.5 text-xs text-ink sm:px-4 sm:py-3 sm:text-sm">
+            <div
+              ref={explainRef}
+              className="rounded-xl border-2 border-accent/40 bg-accent-soft px-3 py-3 text-xs text-ink shadow-sm sm:px-4 sm:py-3.5 sm:text-sm"
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <button
                   type="button"
                   onClick={() => setExplainOpen((o) => !o)}
-                  className="flex items-center gap-1.5 font-bold text-brand sm:gap-2"
+                  className="flex items-center gap-1.5 font-bold text-accent sm:gap-2"
                 >
                   <Info className="size-3.5 sm:size-4" />
                   הסבר השיבוץ האוטומטי
+                  <span className="rounded-md bg-accent/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent sm:text-[11px]">
+                    {draft.explanations.length} שיבוצים
+                  </span>
                   {explainOpen ? (
                     <ChevronUp className="size-3.5 opacity-70 sm:size-4" />
                   ) : (
@@ -510,7 +522,7 @@ export function ShiftPage() {
                 <button
                   type="button"
                   onClick={copyExplanations}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/5 sm:text-xs"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-accent/30 bg-card px-2.5 py-1 text-[11px] font-semibold text-accent hover:bg-white sm:text-xs"
                 >
                   {copyFlash ? (
                     <Check className="size-3.5 text-ok" />
@@ -524,9 +536,12 @@ export function ShiftPage() {
                 למה כל בודק שובץ לנתיב — לפי סדר מילוי, הסמכות, רוטציה ועומס משוקלל
               </p>
               {explainOpen && (
-                <div className="mt-3 space-y-3">
+                <div className="mt-3 max-h-[50vh] space-y-3 overflow-y-auto">
                   {explanationGroups.map((g) => (
-                    <div key={g.laneName} className="rounded-lg border border-line/80 bg-surface/60 px-2.5 py-2 sm:px-3">
+                    <div
+                      key={g.laneName}
+                      className="rounded-lg border border-accent/20 bg-card px-2.5 py-2 sm:px-3"
+                    >
                       <h4 className="mb-1.5 text-xs font-bold text-brand sm:text-sm">
                         {g.laneName}
                       </h4>
@@ -1041,6 +1056,11 @@ export function ShiftPage() {
                   <br />
                   האם תרצה להוסיף בודק לעמדה נוספת?
                 </p>
+                {explanationGroups.length > 0 && (
+                  <p className="mt-2 rounded-lg bg-accent-soft px-2.5 py-2 text-[11px] font-medium text-accent sm:text-xs">
+                    בראש לוח השיבוץ מופיע גם «הסבר השיבוץ האוטומטי» — למה כל בודק שובץ לנתיב.
+                  </p>
+                )}
                 <div className="mt-4 flex flex-wrap gap-2 sm:mt-5">
                   <button
                     type="button"
@@ -1051,7 +1071,15 @@ export function ShiftPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setExtraFlow('closed')}
+                    onClick={() => {
+                      setExtraFlow('closed')
+                      window.setTimeout(() => {
+                        explainRef.current?.scrollIntoView({
+                          behavior: 'smooth',
+                          block: 'start',
+                        })
+                      }, 50)
+                    }}
                     className="rounded-xl px-3.5 py-2 text-xs font-medium text-ink-soft hover:bg-surface sm:px-4 sm:py-2.5 sm:text-sm"
                   >
                     לא תודה

@@ -706,7 +706,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...d,
           assignments: padded,
           unassignedWorkerIds: d.presentWorkerIds.filter((id) => !assignedIds.has(id)),
-          explanations: [],
         }
       })
     },
@@ -751,7 +750,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...d,
           assignments: padded,
           unassignedWorkerIds: d.presentWorkerIds.filter((id) => !assignedIds.has(id)),
-          explanations: [],
         }
       })
     },
@@ -793,7 +791,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...d,
           assignments: padded,
           unassignedWorkerIds: d.presentWorkerIds.filter((id) => !assignedIds.has(id)),
-          explanations: [],
         }
       })
     },
@@ -838,7 +835,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           presentWorkerIds,
           assignments,
           unassignedWorkerIds: presentWorkerIds.filter((id) => !assignedIds.has(id)),
-          explanations: [],
         }
       })
     },
