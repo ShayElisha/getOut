@@ -196,10 +196,49 @@ function buildWorkerProfile(
   return profile
 }
 
-/** Most recent placement was a night shift → next shift should avoid hard */
-function cameFromNight(profile: WorkerHistoryProfile): boolean {
-  return profile.lastShiftType === 'night'
+/** Calendar date minus one local day (YYYY-MM-DD). */
+export function previousLocalDate(isoDate: string): string | null {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  if (!y || !m || !d) return null
+  const dt = new Date(Date.UTC(y, m - 1, d))
+  dt.setUTCDate(dt.getUTCDate() - 1)
+  const yy = dt.getUTCFullYear()
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, '0')
+  const dd = String(dt.getUTCDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
 }
+
+function workerAssignedOnShift(
+  workerId: string,
+  shift: ShiftSchedule,
+): boolean {
+  if (shift.presentWorkerIds?.includes(workerId)) return true
+  return (shift.assignments ?? []).some((a) => a.workerIds.includes(workerId))
+}
+
+/**
+ * Night recovery applies only on the afternoon of the calendar day after a night shift.
+ * Night dated D (starts evening D) → recovery window = afternoon of D+1.
+ */
+export function needsAfternoonNightRecovery(
+  workerId: string,
+  history: ShiftSchedule[],
+  currentDate: string,
+  currentShiftType: ShiftType,
+): boolean {
+  if (currentShiftType !== 'afternoon') return false
+  const nightDate = previousLocalDate(currentDate)
+  if (!nightDate) return false
+  return history.some(
+    (h) =>
+      h.date === nightDate &&
+      h.shiftType === 'night' &&
+      workerAssignedOnShift(workerId, h),
+  )
+}
+
+/** Only treat versatility as decisive when the gap is at least this many open lanes. */
+const VERSATILITY_MIN_GAP = 2
 
 export function computeWorkerLoad(
   workerId: string,
@@ -290,6 +329,21 @@ function versatility(worker: Worker, otherOpenLanes: Lane[]): number {
   return otherOpenLanes.filter((l) => isQualified(worker, l)).length
 }
 
+function easyStaffingRemaining(otherOpen: Lane[]): number {
+  return otherOpen
+    .filter((l) => l.intensity === 'easy')
+    .reduce((n, l) => n + l.staffingStandard, 0)
+}
+
+/**
+ * Ranking for a lane (lower = better). Order is intentional and stable:
+ * 1) afternoon handoff
+ * 2) night→afternoon recovery (day after night only)
+ * 3) avoid immediate same-lane repeat
+ * 4) lane frequency / recency (rotation)
+ * 5) load / hard balance by intensity
+ * 6) versatility only if gap ≥ VERSATILITY_MIN_GAP (avoid noise)
+ */
 function compareForLane(
   a: Worker,
   b: Worker,
@@ -298,11 +352,8 @@ function compareForLane(
   otherOpen: Lane[],
   currentShiftType: ShiftType,
   morning: SameDayMorningContext | null,
+  recoveringIds: Set<string>,
 ): number {
-  const va = versatility(a, otherOpen)
-  const vb = versatility(b, otherOpen)
-  if (va !== vb) return va - vb
-
   const pa = profiles.get(a.id)!
   const pb = profiles.get(b.id)!
 
@@ -312,16 +363,19 @@ function compareForLane(
     if (ta !== tb) return ta - tb
   }
 
-  // After night: strongly prefer easy, strongly avoid hard
-  const aNight = cameFromNight(pa) ? 1 : 0
-  const bNight = cameFromNight(pb) ? 1 : 0
-  if (aNight !== bNight) {
-    if (lane.intensity === 'hard') return aNight - bNight
-    if (lane.intensity === 'easy') return bNight - aNight
-    // medium: mild preference for recovering from night
-    return bNight - aNight
+  const aRec = recoveringIds.has(a.id) ? 1 : 0
+  const bRec = recoveringIds.has(b.id) ? 1 : 0
+  if (aRec !== bRec) {
+    // Afternoon day-after-night only (recoveringIds is empty otherwise).
+    if (lane.intensity === 'hard') return aRec - bRec
+    if (lane.intensity === 'easy') return bRec - aRec
+    // Medium: keep recoverees for easy if easy slots remain; else mild prefer recoveree.
+    const easyLeft = easyStaffingRemaining(otherOpen)
+    if (easyLeft > 0) return aRec - bRec
+    return bRec - aRec
   }
 
+  // Rotation: do not bounce back to the same lane when another candidate exists.
   const aWasLastHere = pa.lastLaneIds.has(lane.id) ? 1 : 0
   const bWasLastHere = pb.lastLaneIds.has(lane.id) ? 1 : 0
   if (aWasLastHere !== bWasLastHere) return aWasLastHere - bWasLastHere
@@ -347,7 +401,6 @@ function compareForLane(
     }
     if (pa.load !== pb.load) return pa.load - pb.load
   } else if (lane.intensity === 'easy') {
-    // Prefer those with more hard / load and fewer day-easy credits
     if (pa.lastWasHard !== pb.lastWasHard) {
       return (pb.lastWasHard ? 1 : 0) - (pa.lastWasHard ? 1 : 0)
     }
@@ -372,6 +425,10 @@ function compareForLane(
     }
     if (pa.load !== pb.load) return pa.load - pb.load
   }
+
+  const va = versatility(a, otherOpen)
+  const vb = versatility(b, otherOpen)
+  if (Math.abs(va - vb) >= VERSATILITY_MIN_GAP) return va - vb
 
   return 0
 }
@@ -431,14 +488,18 @@ function buildPlacementReasons(
   morning: SameDayMorningContext | null,
   poolSize: number,
   lanePriorityNote: string,
+  recoveringIds: Set<string>,
 ): string[] {
   const reasons: string[] = []
   const p = profiles.get(worker.id)!
   const intensityHe = INTENSITY_LABELS[lane.intensity]
+  const recovering = recoveringIds.has(worker.id)
 
   reasons.push(lanePriorityNote)
 
-  if (lane.requiredCertifications.length > 0) {
+  if (poolSize <= 1) {
+    reasons.push('מועמד יחיד פנוי לנתיב — שיבוץ שיורי (אין בחירה בין מועמדים)')
+  } else if (lane.requiredCertifications.length > 0) {
     reasons.push(
       `מוסמך לנתיב (נדרש: ${lane.requiredCertifications.join(', ')}) — מתוך ${poolSize} מועמדים פנויים`,
     )
@@ -446,39 +507,26 @@ function buildPlacementReasons(
     reasons.push(`נבחר מתוך ${poolSize} מועמדים פנויים לנתיב הפתוח`)
   }
 
-  if (rank === 0) {
-    reasons.push('דורג ראשון בין המועמדים לפי כללי האיזון')
-  } else {
-    reasons.push(`דורג #${rank + 1} בין המועמדים (אחרי שמילאו את התקן הראשון)`)
-  }
-
-  const flex = versatility(worker, otherOpen)
-  if (otherOpen.length > 0) {
-    reasons.push(
-      `גמישות לנתיבים שנותרו: מוסמך ל-${flex} מתוך ${otherOpen.length} — מעדיפים לשמור גמישים לנתיבים הבאים`,
-    )
-  }
-
   if (lane.afternoonHandoff && currentShiftType === 'afternoon' && morning?.found) {
     const tier = afternoonHandoffTier(worker.id, lane.id, morning)
     reasons.push(`החלפת צהריים: ${handoffTierLabel(tier)}`)
   }
 
-  if (cameFromNight(p)) {
-    const lastHe = p.lastShiftType
-      ? SHIFT_TYPE_LABELS[p.lastShiftType]
-      : 'לילה'
+  if (recovering) {
     if (lane.intensity === 'hard') {
       reasons.push(
-        `שיבוץ אחרון היה ${lastHe} — עדיף להימנע מקשה אחרי לילה, אך לא נמצאו מספיק מועמדים אחרים`,
+        'התאוששות מלילה (צהריים ביום שאחרי לילה) — עדיף להימנע מקשה, אך לא נמצאו מספיק מועמדים אחרים',
       )
     } else if (lane.intensity === 'easy') {
       reasons.push(
-        `שיבוץ אחרון היה ${lastHe} — עדיפות לנתיב קל להתאוששות אחרי לילה`,
+        'התאוששות מלילה (צהריים ביום שאחרי לילה) — עדיפות לנתיב קל',
       )
     } else {
+      const easyLeft = easyStaffingRemaining(otherOpen)
       reasons.push(
-        `שיבוץ אחרון היה ${lastHe} — העדפה קלה לנתיב בינוני (לא קשה) אחרי לילה`,
+        easyLeft > 0
+          ? 'התאוששות מלילה — נשמר לנתיב קל שנותר; שובץ לבינוני רק אם לא הייתה חלופה'
+          : 'התאוששות מלילה — אין נתיב קל שנותר; בינוני עדיף על קשה',
       )
     }
   } else if (p.lastShiftType) {
@@ -491,46 +539,45 @@ function buildPlacementReasons(
 
   const timesHere = p.laneCounts.get(lane.id) ?? 0
   if (p.lastLaneIds.has(lane.id)) {
-    reasons.push('היה בנתיב זה בשיבוץ האחרון — בדרך כלל נמנעים מחזרה מיידית (אין חלופה טובה יותר)')
+    reasons.push(
+      'היה בנתיב זה בשיבוץ האחרון — בדרך כלל נמנעים מחזרה מיידית (אין חלופה טובה יותר בדירוג)',
+    )
   } else if (timesHere === 0) {
     reasons.push('לא שובץ בנתיב זה בחלון ההיסטוריה — תורמים לרוטציה')
   } else {
-    const recency = p.laneRecency.get(lane.id)
-    const when =
-      recency === 0
-        ? 'בשיבוץ האחרון לפני הנוכחי'
-        : recency != null
-          ? `לפני כ־${recency + 1} שיבוצים בהיסטוריה`
-          : 'בעבר'
-    reasons.push(`היה בנתיב זה ${timesHere} פעמים (${when}) — פחות מחזרות ממועמדים אחרים`)
+    reasons.push(`היה בנתיב זה ${timesHere} פעמים בחלון ההיסטוריה — פחות חזרות ממועמדים אחרים`)
   }
 
   if (lane.intensity === 'hard') {
     reasons.push(
-      `איזון עומס לקשה: ${p.hardInSameShiftType} קשים במשמרות ${SHIFT_TYPE_LABELS[currentShiftType]}, ${p.hardCount} קשים בסך הכל, עומס משוקלל ${fmtLoad(p.load)} (מעדיפים מי שפחות נשא קשה/עומס)`,
+      `איזון עומס לקשה: ${p.hardCount} קשים בסך הכל, עומס משוקלל ${fmtLoad(p.load)}`,
     )
   } else if (lane.intensity === 'easy') {
     reasons.push(
-      `איזון מנוחה לקל: ${p.hardCount} קשים בהיסטוריה, ${p.dayEasyCount} קרדיטי קל יום, עומס ${fmtLoad(p.load)} (מעדיפים מי שנשא יותר קשה/עומס וקיבל פחות מנוחה)`,
+      `איזון מנוחה לקל: ${p.hardCount} קשים בהיסטוריה, עומס ${fmtLoad(p.load)}`,
     )
   } else {
     reasons.push(
-      `איזון לנתיב ${intensityHe}: ${p.hardInSameShiftType} קשים באותו סוג משמרת, עומס ${fmtLoad(p.loadInSameShiftType)} בסוג זה / ${fmtLoad(p.load)} כולל`,
+      `איזון לנתיב ${intensityHe}: עומס ${fmtLoad(p.loadInSameShiftType)} בסוג משמרת זה / ${fmtLoad(p.load)} כולל`,
     )
   }
 
-  // Contrast with the next-ranked leftover candidate (if any)
+  const flex = versatility(worker, otherOpen)
+  if (otherOpen.length > 0) {
+    const rivalFlex = ranked[rank + 1]
+      ? versatility(ranked[rank + 1]!, otherOpen)
+      : flex
+    if (Math.abs(flex - rivalFlex) >= VERSATILITY_MIN_GAP) {
+      reasons.push(
+        `גמישות לנתיבים שנותרו: מוסמך ל-${flex} מתוך ${otherOpen.length} (הפרש משמעותי מול מועמדים אחרים)`,
+      )
+    }
+  }
+
   const rival = ranked[rank + 1]
   if (rival) {
     const rp = profiles.get(rival.id)!
     const diffs: string[] = []
-    const va = versatility(worker, otherOpen)
-    const vb = versatility(rival, otherOpen)
-    if (va !== vb) {
-      diffs.push(
-        `גמישות נמוכה יותר (${va} מול ${vb} של ${rival.fullName})`,
-      )
-    }
     if (
       lane.afternoonHandoff &&
       currentShiftType === 'afternoon' &&
@@ -540,18 +587,20 @@ function buildPlacementReasons(
       const tb = afternoonHandoffTier(rival.id, lane.id, morning)
       if (ta !== tb) {
         diffs.push(
-          `עדיפות החלפה טובה יותר מול ${rival.fullName} (${handoffTierLabel(ta)} מול ${handoffTierLabel(tb)})`,
+          `עדיפות החלפה טובה יותר מול ${rival.fullName}`,
         )
       }
     }
-    const aNight = cameFromNight(p)
-    const bNight = cameFromNight(rp)
-    if (aNight !== bNight && lane.intensity === 'hard') {
-      diffs.push(
-        aNight
-          ? `נבחר למרות התאוששות מלילה (אין מספיק חלופות)`
-          : `לא התאושש מלילה — בניגוד ל${rival.fullName}`,
-      )
+    const aRec = recoveringIds.has(worker.id)
+    const bRec = recoveringIds.has(rival.id)
+    if (aRec !== bRec) {
+      if (lane.intensity === 'easy' && aRec) {
+        diffs.push(`התאוששות מלילה בצהריים — בניגוד ל${rival.fullName}`)
+      } else if (lane.intensity === 'hard' && !aRec) {
+        diffs.push(`לא בעדיפות התאוששות מלילה — בניגוד ל${rival.fullName}`)
+      } else if (lane.intensity !== 'easy' && !aRec && bRec) {
+        diffs.push(`נשמר ${rival.fullName} למנוחה אחרי לילה`)
+      }
     }
     if (p.lastLaneIds.has(lane.id) !== rp.lastLaneIds.has(lane.id)) {
       if (!p.lastLaneIds.has(lane.id)) {
@@ -565,15 +614,10 @@ function buildPlacementReasons(
         `פחות פעמים בנתיב זה (${aTimes} מול ${bTimes} של ${rival.fullName})`,
       )
     }
-    if (lane.intensity === 'hard' && p.hardCount !== rp.hardCount) {
-      diffs.push(
-        `פחות שיבוצי קשה (${p.hardCount} מול ${rp.hardCount} של ${rival.fullName})`,
-      )
-    }
-    if (lane.intensity === 'easy' && p.load !== rp.load) {
-      diffs.push(
-        `עומס גבוה יותר למילוי מנוחה (${fmtLoad(p.load)} מול ${fmtLoad(rp.load)} של ${rival.fullName})`,
-      )
+    const va = versatility(worker, otherOpen)
+    const vb = versatility(rival, otherOpen)
+    if (Math.abs(va - vb) >= VERSATILITY_MIN_GAP) {
+      diffs.push(`גמישות ${va} מול ${vb} של ${rival.fullName}`)
     }
     if (diffs.length > 0) {
       reasons.push(`לעומת המועמד הבא (${rival.fullName}): ${diffs.join('; ')}`)
@@ -620,6 +664,18 @@ export function runAssignmentAlgorithm(
       w.id,
       buildWorkerProfile(w.id, relevant, allLanes, currentShiftType),
     )
+  }
+
+  // Night recovery: afternoon only, calendar day after the night shift date.
+  const recoveringIds = new Set<string>()
+  if (currentShiftType === 'afternoon') {
+    for (const w of presentWorkers) {
+      if (
+        needsAfternoonNightRecovery(w.id, history, currentDate, currentShiftType)
+      ) {
+        recoveringIds.add(w.id)
+      }
+    }
   }
 
   const intensityOrder: Record<Intensity, number> = { hard: 0, medium: 1, easy: 2 }
@@ -672,15 +728,12 @@ export function runAssignmentAlgorithm(
       continue
     }
 
-    // Hard after night: prefer non-night recoverees; warn if forced
+    // Hard: keep afternoon day-after-night recoverees off hard when possible
     let pool = candidates
-    if (lane.intensity === 'hard') {
-      const rested = candidates.filter((w) => !cameFromNight(profiles.get(w.id)!))
+    if (lane.intensity === 'hard' && recoveringIds.size > 0) {
+      const rested = candidates.filter((w) => !recoveringIds.has(w.id))
       if (rested.length >= lane.staffingStandard) {
         pool = rested
-      } else if (rested.length > 0 && rested.length < candidates.length) {
-        // Prefer rested first by sorting; still allow night recoverees if needed
-        pool = candidates
       }
     }
 
@@ -693,6 +746,7 @@ export function runAssignmentAlgorithm(
         otherOpen,
         currentShiftType,
         morningCtx,
+        recoveringIds,
       ),
     )
 
@@ -719,6 +773,7 @@ export function runAssignmentAlgorithm(
           morningCtx,
           pool.length,
           lanePriorityNote,
+          recoveringIds,
         ),
       })
     })
@@ -726,9 +781,9 @@ export function runAssignmentAlgorithm(
     if (lane.intensity === 'hard') {
       for (const id of picked) {
         const name = workerById.get(id)?.fullName ?? id
-        if (cameFromNight(profiles.get(id)!)) {
+        if (recoveringIds.has(id)) {
           warnings.push(
-            `אחרי לילה → קשה: "${name}" שובץ בנתיב "${lane.name}" (אין מספיק מועמדים אחרים)`,
+            `אחרי לילה → קשה בצהריים: "${name}" שובץ בנתיב "${lane.name}" (אין מספיק מועמדים אחרים)`,
           )
         }
       }
