@@ -1,6 +1,8 @@
 import {
   countsAsDayEasy,
   effectiveIntensityScore,
+  INTENSITY_LABELS,
+  SHIFT_TYPE_LABELS,
 } from './constants'
 import type {
   Intensity,
@@ -11,11 +13,21 @@ import type {
   Worker,
 } from './types'
 
+/** Why a specific worker was placed on a specific lane */
+export interface PlacementExplanation {
+  laneId: string
+  workerId: string
+  /** Hebrew bullet reasons grounded in the ranking math */
+  reasons: string[]
+}
+
 export interface AssignmentResult {
   assignments: LaneAssignment[]
   unassignedWorkerIds: string[]
   understaffedLaneIds: string[]
   warnings: string[]
+  /** Per placement rationale (lane fill order + worker ranking) */
+  explanations: PlacementExplanation[]
 }
 
 export interface AssignmentContext {
@@ -364,6 +376,213 @@ function compareForLane(
   return 0
 }
 
+function fmtLoad(n: number): string {
+  return (Math.round(n * 10) / 10).toString()
+}
+
+/** Why this lane is filled before other remaining lanes */
+function explainLanePriority(
+  lane: Lane,
+  orderedLanes: Lane[],
+  laneIndex: number,
+  presentWorkers: Worker[],
+  currentShiftType: ShiftType,
+): string {
+  const parts: string[] = []
+  parts.push(
+    `סדר מילוי: נתיב #${laneIndex + 1} מתוך ${orderedLanes.length} (קודם ממלאים נדירים/קשים)`,
+  )
+
+  if (currentShiftType === 'afternoon' && lane.afternoonHandoff) {
+    parts.push('עדיפות החלפת צהריים (מכס)')
+  }
+  if (lane.requiredCertifications.length > 0) {
+    parts.push(
+      `דורש הסמכות (${lane.requiredCertifications.join(', ')}) — לפני נתיבים פתוחים`,
+    )
+  } else {
+    parts.push('נתיב פתוח (ללא הסמכה חובה)')
+  }
+
+  const qualified = presentWorkers.filter((w) => isQualified(w, lane)).length
+  parts.push(
+    `${qualified} מוסמכים מבין הנוכחים · עצימות ${INTENSITY_LABELS[lane.intensity]} · תקן ${lane.staffingStandard}`,
+  )
+  return parts.join(' · ')
+}
+
+function handoffTierLabel(tier: number): string {
+  if (tier === 0) return 'מגיע לצהריים בלבד (עדיפות מחליף)'
+  if (tier === 1) return 'ממשיך משמרת ארוכה — היה באותו נתיב בבוקר'
+  return 'ממשיך משמרת ארוכה — היה בנתיב אחר בבוקר'
+}
+
+/**
+ * Build Hebrew reasons for why `worker` ranked at `rank` among candidates for this lane.
+ */
+function buildPlacementReasons(
+  worker: Worker,
+  lane: Lane,
+  ranked: Worker[],
+  rank: number,
+  profiles: Map<string, WorkerHistoryProfile>,
+  otherOpen: Lane[],
+  currentShiftType: ShiftType,
+  morning: SameDayMorningContext | null,
+  poolSize: number,
+  lanePriorityNote: string,
+): string[] {
+  const reasons: string[] = []
+  const p = profiles.get(worker.id)!
+  const intensityHe = INTENSITY_LABELS[lane.intensity]
+
+  reasons.push(lanePriorityNote)
+
+  if (lane.requiredCertifications.length > 0) {
+    reasons.push(
+      `מוסמך לנתיב (נדרש: ${lane.requiredCertifications.join(', ')}) — מתוך ${poolSize} מועמדים פנויים`,
+    )
+  } else {
+    reasons.push(`נבחר מתוך ${poolSize} מועמדים פנויים לנתיב הפתוח`)
+  }
+
+  if (rank === 0) {
+    reasons.push('דורג ראשון בין המועמדים לפי כללי האיזון')
+  } else {
+    reasons.push(`דורג #${rank + 1} בין המועמדים (אחרי שמילאו את התקן הראשון)`)
+  }
+
+  const flex = versatility(worker, otherOpen)
+  if (otherOpen.length > 0) {
+    reasons.push(
+      `גמישות לנתיבים שנותרו: מוסמך ל-${flex} מתוך ${otherOpen.length} — מעדיפים לשמור גמישים לנתיבים הבאים`,
+    )
+  }
+
+  if (lane.afternoonHandoff && currentShiftType === 'afternoon' && morning?.found) {
+    const tier = afternoonHandoffTier(worker.id, lane.id, morning)
+    reasons.push(`החלפת צהריים: ${handoffTierLabel(tier)}`)
+  }
+
+  if (cameFromNight(p)) {
+    const lastHe = p.lastShiftType
+      ? SHIFT_TYPE_LABELS[p.lastShiftType]
+      : 'לילה'
+    if (lane.intensity === 'hard') {
+      reasons.push(
+        `שיבוץ אחרון היה ${lastHe} — עדיף להימנע מקשה אחרי לילה, אך לא נמצאו מספיק מועמדים אחרים`,
+      )
+    } else if (lane.intensity === 'easy') {
+      reasons.push(
+        `שיבוץ אחרון היה ${lastHe} — עדיפות לנתיב קל להתאוששות אחרי לילה`,
+      )
+    } else {
+      reasons.push(
+        `שיבוץ אחרון היה ${lastHe} — העדפה קלה לנתיב בינוני (לא קשה) אחרי לילה`,
+      )
+    }
+  } else if (p.lastShiftType) {
+    reasons.push(
+      `שיבוץ אחרון: ${SHIFT_TYPE_LABELS[p.lastShiftType]}${
+        p.lastWasHard ? ' (קשה)' : ''
+      }`,
+    )
+  }
+
+  const timesHere = p.laneCounts.get(lane.id) ?? 0
+  if (p.lastLaneIds.has(lane.id)) {
+    reasons.push('היה בנתיב זה בשיבוץ האחרון — בדרך כלל נמנעים מחזרה מיידית (אין חלופה טובה יותר)')
+  } else if (timesHere === 0) {
+    reasons.push('לא שובץ בנתיב זה בחלון ההיסטוריה — תורמים לרוטציה')
+  } else {
+    const recency = p.laneRecency.get(lane.id)
+    const when =
+      recency === 0
+        ? 'בשיבוץ האחרון לפני הנוכחי'
+        : recency != null
+          ? `לפני כ־${recency + 1} שיבוצים בהיסטוריה`
+          : 'בעבר'
+    reasons.push(`היה בנתיב זה ${timesHere} פעמים (${when}) — פחות מחזרות ממועמדים אחרים`)
+  }
+
+  if (lane.intensity === 'hard') {
+    reasons.push(
+      `איזון עומס לקשה: ${p.hardInSameShiftType} קשים במשמרות ${SHIFT_TYPE_LABELS[currentShiftType]}, ${p.hardCount} קשים בסך הכל, עומס משוקלל ${fmtLoad(p.load)} (מעדיפים מי שפחות נשא קשה/עומס)`,
+    )
+  } else if (lane.intensity === 'easy') {
+    reasons.push(
+      `איזון מנוחה לקל: ${p.hardCount} קשים בהיסטוריה, ${p.dayEasyCount} קרדיטי קל יום, עומס ${fmtLoad(p.load)} (מעדיפים מי שנשא יותר קשה/עומס וקיבל פחות מנוחה)`,
+    )
+  } else {
+    reasons.push(
+      `איזון לנתיב ${intensityHe}: ${p.hardInSameShiftType} קשים באותו סוג משמרת, עומס ${fmtLoad(p.loadInSameShiftType)} בסוג זה / ${fmtLoad(p.load)} כולל`,
+    )
+  }
+
+  // Contrast with the next-ranked leftover candidate (if any)
+  const rival = ranked[rank + 1]
+  if (rival) {
+    const rp = profiles.get(rival.id)!
+    const diffs: string[] = []
+    const va = versatility(worker, otherOpen)
+    const vb = versatility(rival, otherOpen)
+    if (va !== vb) {
+      diffs.push(
+        `גמישות נמוכה יותר (${va} מול ${vb} של ${rival.fullName})`,
+      )
+    }
+    if (
+      lane.afternoonHandoff &&
+      currentShiftType === 'afternoon' &&
+      morning?.found
+    ) {
+      const ta = afternoonHandoffTier(worker.id, lane.id, morning)
+      const tb = afternoonHandoffTier(rival.id, lane.id, morning)
+      if (ta !== tb) {
+        diffs.push(
+          `עדיפות החלפה טובה יותר מול ${rival.fullName} (${handoffTierLabel(ta)} מול ${handoffTierLabel(tb)})`,
+        )
+      }
+    }
+    const aNight = cameFromNight(p)
+    const bNight = cameFromNight(rp)
+    if (aNight !== bNight && lane.intensity === 'hard') {
+      diffs.push(
+        aNight
+          ? `נבחר למרות התאוששות מלילה (אין מספיק חלופות)`
+          : `לא התאושש מלילה — בניגוד ל${rival.fullName}`,
+      )
+    }
+    if (p.lastLaneIds.has(lane.id) !== rp.lastLaneIds.has(lane.id)) {
+      if (!p.lastLaneIds.has(lane.id)) {
+        diffs.push(`לא חזר מיד לאותו נתיב (בניגוד ל${rival.fullName})`)
+      }
+    }
+    const aTimes = p.laneCounts.get(lane.id) ?? 0
+    const bTimes = rp.laneCounts.get(lane.id) ?? 0
+    if (aTimes !== bTimes) {
+      diffs.push(
+        `פחות פעמים בנתיב זה (${aTimes} מול ${bTimes} של ${rival.fullName})`,
+      )
+    }
+    if (lane.intensity === 'hard' && p.hardCount !== rp.hardCount) {
+      diffs.push(
+        `פחות שיבוצי קשה (${p.hardCount} מול ${rp.hardCount} של ${rival.fullName})`,
+      )
+    }
+    if (lane.intensity === 'easy' && p.load !== rp.load) {
+      diffs.push(
+        `עומס גבוה יותר למילוי מנוחה (${fmtLoad(p.load)} מול ${fmtLoad(rp.load)} של ${rival.fullName})`,
+      )
+    }
+    if (diffs.length > 0) {
+      reasons.push(`לעומת המועמד הבא (${rival.fullName}): ${diffs.join('; ')}`)
+    }
+  }
+
+  return reasons
+}
+
 export function runAssignmentAlgorithm(
   activeLanes: Lane[],
   presentWorkers: Worker[],
@@ -372,6 +591,7 @@ export function runAssignmentAlgorithm(
   ctx?: AssignmentContext,
 ): AssignmentResult {
   const warnings: string[] = []
+  const explanations: PlacementExplanation[] = []
   const available = new Set(presentWorkers.map((w) => w.id))
   const workerById = new Map(presentWorkers.map((w) => [w.id, w]))
 
@@ -429,9 +649,17 @@ export function runAssignmentAlgorithm(
   const understaffedLaneIds: string[] = []
   const remainingLaneIds = new Set(orderedLanes.map((l) => l.id))
 
-  for (const lane of orderedLanes) {
+  for (let laneIndex = 0; laneIndex < orderedLanes.length; laneIndex++) {
+    const lane = orderedLanes[laneIndex]!
     remainingLaneIds.delete(lane.id)
     const otherOpen = orderedLanes.filter((l) => remainingLaneIds.has(l.id))
+    const lanePriorityNote = explainLanePriority(
+      lane,
+      orderedLanes,
+      laneIndex,
+      presentWorkers,
+      currentShiftType,
+    )
 
     const candidates = [...available]
       .map((id) => workerById.get(id)!)
@@ -469,11 +697,31 @@ export function runAssignmentAlgorithm(
     )
 
     const needed = lane.staffingStandard
-    const picked = ranked.slice(0, needed).map((w) => w.id)
+    const pickedWorkers = ranked.slice(0, needed)
+    const picked = pickedWorkers.map((w) => w.id)
 
     for (const id of picked) available.delete(id)
 
     assignments.push({ laneId: lane.id, workerIds: picked })
+
+    pickedWorkers.forEach((worker, rank) => {
+      explanations.push({
+        laneId: lane.id,
+        workerId: worker.id,
+        reasons: buildPlacementReasons(
+          worker,
+          lane,
+          ranked,
+          rank,
+          profiles,
+          otherOpen,
+          currentShiftType,
+          morningCtx,
+          pool.length,
+          lanePriorityNote,
+        ),
+      })
+    })
 
     if (lane.intensity === 'hard') {
       for (const id of picked) {
@@ -534,6 +782,7 @@ export function runAssignmentAlgorithm(
     unassignedWorkerIds: unassigned,
     understaffedLaneIds,
     warnings: [...new Set(warnings)],
+    explanations,
   }
 }
 

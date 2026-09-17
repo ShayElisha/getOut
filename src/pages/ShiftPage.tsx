@@ -13,6 +13,10 @@ import {
   ArrowLeftRight,
   Hand,
   Trash2,
+  Info,
+  Copy,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import { isQualified, buildSameDayMorningContext, afternoonHandoffTier } from '../algorithm'
 import { useApp } from '../context/AppContext'
@@ -58,6 +62,8 @@ export function ShiftPage() {
   const [pickLaneId, setPickLaneId] = useState('')
   const [pickWorkerId, setPickWorkerId] = useState('')
   const [saveFlash, setSaveFlash] = useState(false)
+  const [explainOpen, setExplainOpen] = useState(true)
+  const [copyFlash, setCopyFlash] = useState(false)
   const [swapTarget, setSwapTarget] = useState<{
     laneId: string
     slotIndex: number
@@ -91,6 +97,54 @@ export function ShiftPage() {
       (id) => data.workers.find((w) => w.id === id)?.fullName ?? id,
     )
   }, [draft, data.workers])
+
+  const explanationGroups = useMemo(() => {
+    if (!draft?.explanations?.length) return []
+    const byLane = new Map<
+      string,
+      { laneName: string; placements: { workerName: string; reasons: string[] }[] }
+    >()
+    for (const laneId of draft.activeLaneIds) {
+      const lane = data.lanes.find((l) => l.id === laneId)
+      if (!lane) continue
+      const placements = draft.explanations
+        .filter((e) => e.laneId === laneId)
+        .map((e) => ({
+          workerName: data.workers.find((w) => w.id === e.workerId)?.fullName ?? e.workerId,
+          reasons: e.reasons,
+        }))
+      if (placements.length === 0) continue
+      byLane.set(laneId, { laneName: lane.name, placements })
+    }
+    return [...byLane.values()]
+  }, [draft, data.lanes, data.workers])
+
+  const explanationText = useMemo(() => {
+    if (!draft || explanationGroups.length === 0) return ''
+    const header = `הסבר שיבוץ אוטומטי · ${new Date(draft.date).toLocaleDateString('he-IL')} · ${SHIFT_TYPE_LABELS[draft.shiftType]}`
+    const blocks = explanationGroups.map((g) => {
+      const people = g.placements
+        .map((p) => {
+          const bullets = p.reasons.map((r) => `  • ${r}`).join('\n')
+          return `${p.workerName}\n${bullets}`
+        })
+        .join('\n')
+      return `▸ ${g.laneName}\n${people}`
+    })
+    return [header, ...blocks].join('\n\n')
+  }, [draft, explanationGroups])
+
+  const copyExplanations = async () => {
+    if (!explanationText) return
+    try {
+      await navigator.clipboard.writeText(explanationText)
+      setCopyFlash(true)
+      window.setTimeout(() => setCopyFlash(false), 1600)
+    } catch {
+      // Fallback for older browsers / denied clipboard
+      window.prompt('העתיקו את ההסבר:', explanationText)
+    }
+  }
 
   const morningCtx = useMemo(() => {
     if (!draft || draft.shiftType !== 'afternoon') return null
@@ -434,6 +488,66 @@ export function ShiftPage() {
                   <li key={w}>{w}</li>
                 ))}
               </ul>
+            </div>
+          )}
+
+          {explanationGroups.length > 0 && (
+            <div className="rounded-xl border border-brand/20 bg-card px-3 py-2.5 text-xs text-ink sm:px-4 sm:py-3 sm:text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setExplainOpen((o) => !o)}
+                  className="flex items-center gap-1.5 font-bold text-brand sm:gap-2"
+                >
+                  <Info className="size-3.5 sm:size-4" />
+                  הסבר השיבוץ האוטומטי
+                  {explainOpen ? (
+                    <ChevronUp className="size-3.5 opacity-70 sm:size-4" />
+                  ) : (
+                    <ChevronDown className="size-3.5 opacity-70 sm:size-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={copyExplanations}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-semibold text-brand hover:bg-brand/5 sm:text-xs"
+                >
+                  {copyFlash ? (
+                    <Check className="size-3.5 text-ok" />
+                  ) : (
+                    <Copy className="size-3.5" />
+                  )}
+                  {copyFlash ? 'הועתק' : 'העתק הסבר'}
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-ink-soft sm:text-xs">
+                למה כל בודק שובץ לנתיב — לפי סדר מילוי, הסמכות, רוטציה ועומס משוקלל
+              </p>
+              {explainOpen && (
+                <div className="mt-3 space-y-3">
+                  {explanationGroups.map((g) => (
+                    <div key={g.laneName} className="rounded-lg border border-line/80 bg-surface/60 px-2.5 py-2 sm:px-3">
+                      <h4 className="mb-1.5 text-xs font-bold text-brand sm:text-sm">
+                        {g.laneName}
+                      </h4>
+                      <div className="space-y-2.5">
+                        {g.placements.map((p) => (
+                          <div key={`${g.laneName}-${p.workerName}`}>
+                            <p className="text-[11px] font-semibold text-ink sm:text-xs">
+                              {p.workerName}
+                            </p>
+                            <ul className="mt-0.5 list-inside list-disc space-y-0.5 text-[11px] leading-relaxed text-ink-soft sm:text-xs">
+                              {p.reasons.map((r, i) => (
+                                <li key={i}>{r}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

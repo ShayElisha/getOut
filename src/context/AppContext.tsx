@@ -10,7 +10,10 @@ import {
 } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { v4 as uuid } from 'uuid'
-import { runAssignmentAlgorithm } from '../algorithm'
+import {
+  runAssignmentAlgorithm,
+  type PlacementExplanation,
+} from '../algorithm'
 import {
   ApiError,
   checkLoginRemote,
@@ -61,6 +64,8 @@ export interface ShiftDraft {
   assignments: LaneAssignment[]
   warnings: string[]
   unassignedWorkerIds: string[]
+  /** Filled by auto-assign; cleared on manual board edits */
+  explanations: PlacementExplanation[]
 }
 
 interface AppContextValue {
@@ -184,7 +189,10 @@ function restoreDraft(): ShiftDraft | null {
     if (!raw) return null
     const parsed = JSON.parse(raw) as ShiftDraft
     if (!parsed?.id || !Array.isArray(parsed.activeLaneIds)) return null
-    return parsed
+    return {
+      ...parsed,
+      explanations: Array.isArray(parsed.explanations) ? parsed.explanations : [],
+    }
   } catch {
     return null
   }
@@ -211,6 +219,7 @@ function snapshotDraft(d: ShiftDraft): string {
     })),
     warnings: d.warnings,
     unassignedWorkerIds: d.unassignedWorkerIds,
+    explanations: d.explanations ?? [],
   })
 }
 
@@ -479,6 +488,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       assignments: padAssignments(item.assignments, data.lanes, item.activeLaneIds),
       warnings: [],
       unassignedWorkerIds: item.presentWorkerIds.filter((wid) => !assigned.has(wid)),
+      explanations: [],
     })
     setShiftStep('board')
     navigate('/shift', { replace: true })
@@ -517,6 +527,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       assignments: [],
       warnings: [],
       unassignedWorkerIds: [],
+      explanations: [],
     })
     setShiftStep('lanes')
     setView('shift')
@@ -634,6 +645,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ),
         warnings: result.warnings,
         unassignedWorkerIds: result.unassignedWorkerIds,
+        explanations: result.explanations,
       }
     })
     setShiftStep('board')
@@ -656,6 +668,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         assignments: empty,
         warnings: [],
         unassignedWorkerIds: [...d.presentWorkerIds],
+        explanations: [],
       }
     })
     setShiftStep('board')
@@ -693,6 +706,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...d,
           assignments: padded,
           unassignedWorkerIds: d.presentWorkerIds.filter((id) => !assignedIds.has(id)),
+          explanations: [],
         }
       })
     },
@@ -737,6 +751,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...d,
           assignments: padded,
           unassignedWorkerIds: d.presentWorkerIds.filter((id) => !assignedIds.has(id)),
+          explanations: [],
         }
       })
     },
@@ -778,6 +793,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...d,
           assignments: padded,
           unassignedWorkerIds: d.presentWorkerIds.filter((id) => !assignedIds.has(id)),
+          explanations: [],
         }
       })
     },
@@ -822,6 +838,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           presentWorkerIds,
           assignments,
           unassignedWorkerIds: presentWorkerIds.filter((id) => !assignedIds.has(id)),
+          explanations: [],
         }
       })
     },
