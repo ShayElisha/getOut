@@ -67,6 +67,7 @@ export function ShiftPage() {
   const [pickWorkerId, setPickWorkerId] = useState('')
   const [saveFlash, setSaveFlash] = useState(false)
   const [explainOpen, setExplainOpen] = useState(true)
+  const [explainModalOpen, setExplainModalOpen] = useState(false)
   const [copyFlash, setCopyFlash] = useState(false)
   const explainRef = useRef<HTMLDivElement | null>(null)
   const [swapTarget, setSwapTarget] = useState<{
@@ -179,11 +180,8 @@ export function ShiftPage() {
     setExtraFlow('closed')
     setSaveFlash(false)
     setExplainOpen(true)
+    setExplainModalOpen(true)
     runAutoAssign()
-    // Scroll to rationale after the board paints (surplus modal may open above it).
-    window.setTimeout(() => {
-      explainRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    }, 80)
   }
 
   const handleManualAssign = () => {
@@ -191,12 +189,26 @@ export function ShiftPage() {
     setExtraAskedOnce(true)
     setExtraFlow('closed')
     setSaveFlash(false)
+    setExplainModalOpen(false)
     startManualAssign()
   }
 
-  // Surplus prompt — only once after each auto-assign
+  const closeExplainModal = () => {
+    setExplainModalOpen(false)
+  }
+
+  // If auto-assign produced no explanations, don't leave the modal flag stuck open.
+  useEffect(() => {
+    if (!explainModalOpen || shiftStep !== 'board' || !draft) return
+    if ((draft.explanations?.length ?? 0) === 0) {
+      setExplainModalOpen(false)
+    }
+  }, [explainModalOpen, shiftStep, draft])
+
+  // Surplus prompt — only once after each auto-assign, after the explanation dialog
   useEffect(() => {
     if (!draft || shiftStep !== 'board' || extraAskedOnce) return
+    if (explainModalOpen) return
     const moreWorkersThanLanes =
       draft.presentWorkerIds.length > draft.activeLaneIds.length
     const hasUnassigned = draft.unassignedWorkerIds.length > 0
@@ -206,7 +218,7 @@ export function ShiftPage() {
     setPickLaneId(draft.activeLaneIds[0] ?? '')
     setPickWorkerId(draft.unassignedWorkerIds[0] ?? '')
     setExtraFlow('ask')
-  }, [draft, shiftStep, extraAskedOnce])
+  }, [draft, shiftStep, extraAskedOnce, explainModalOpen])
 
   const confirmExtraAdd = () => {
     if (!pickLaneId || !pickWorkerId) return
@@ -610,6 +622,19 @@ export function ShiftPage() {
               </p>
             </div>
             <div className="flex flex-wrap gap-1.5 sm:gap-2">
+              {explanationGroups.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExplainOpen(true)
+                    setExplainModalOpen(true)
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-accent/40 bg-accent-soft px-2.5 py-1.5 text-xs font-semibold text-accent sm:px-3 sm:py-2 sm:text-sm"
+                >
+                  <Info className="size-3.5 sm:size-4" />
+                  פירוט השיבוץ
+                </button>
+              )}
               <button
                 type="button"
                 onClick={handleSave}
@@ -1057,6 +1082,91 @@ export function ShiftPage() {
           )
         })()}
 
+      {explainModalOpen && explanationGroups.length > 0 && (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/50 p-3 sm:items-center sm:p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="explain-modal-title"
+            className="flex max-h-[85vh] w-full max-w-lg flex-col animate-fade-up rounded-2xl border border-line bg-card shadow-xl"
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-5 sm:py-4">
+              <div className="flex items-center gap-2">
+                <span className="flex size-8 items-center justify-center rounded-xl bg-accent-soft text-accent sm:size-9">
+                  <Info className="size-4 sm:size-5" />
+                </span>
+                <div>
+                  <h3
+                    id="explain-modal-title"
+                    className="font-display text-base font-bold text-ink sm:text-lg"
+                  >
+                    פירוט השיבוץ האוטומטי
+                  </h3>
+                  <p className="text-[11px] text-ink-soft sm:text-xs">
+                    למה כל בודק שובץ לנתיב שלו
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeExplainModal}
+                className="rounded-lg p-1.5 text-ink-soft hover:bg-surface"
+                aria-label="סגור"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3 sm:px-5 sm:py-4">
+              {explanationGroups.map((g) => (
+                <div
+                  key={g.laneName}
+                  className="rounded-xl border border-line bg-surface/70 px-3 py-2.5"
+                >
+                  <h4 className="mb-1.5 text-sm font-bold text-brand">{g.laneName}</h4>
+                  <div className="space-y-2.5">
+                    {g.placements.map((p) => (
+                      <div key={`${g.laneName}-${p.workerName}`}>
+                        <p className="text-xs font-semibold text-ink sm:text-sm">
+                          {p.workerName}
+                        </p>
+                        <ul className="mt-0.5 list-inside list-disc space-y-0.5 text-[11px] leading-relaxed text-ink-soft sm:text-xs">
+                          {p.reasons.map((r, i) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2 border-t border-line px-4 py-3 sm:px-5">
+              <button
+                type="button"
+                onClick={copyExplanations}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-surface px-3 py-2 text-xs font-semibold text-brand sm:text-sm"
+              >
+                {copyFlash ? (
+                  <Check className="size-3.5 text-ok" />
+                ) : (
+                  <Copy className="size-3.5" />
+                )}
+                {copyFlash ? 'הועתק' : 'העתק הכל'}
+              </button>
+              <button
+                type="button"
+                onClick={closeExplainModal}
+                className="mr-auto inline-flex flex-1 items-center justify-center rounded-xl bg-accent px-3.5 py-2 text-xs font-bold text-white sm:flex-none sm:px-5 sm:text-sm"
+              >
+                הבנתי, המשך ללוח
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {extraFlow !== 'closed' && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 p-3 sm:items-center sm:p-4">
           <div
@@ -1094,7 +1204,7 @@ export function ShiftPage() {
                 </p>
                 {explanationGroups.length > 0 && (
                   <p className="mt-2 rounded-lg bg-accent-soft px-2.5 py-2 text-[11px] font-medium text-accent sm:text-xs">
-                    בראש לוח השיבוץ מופיע גם «הסבר השיבוץ האוטומטי» — למה כל בודק שובץ לנתיב.
+                    אפשר תמיד לפתוח שוב את «פירוט השיבוץ» מהכפתור בראש הלוח.
                   </p>
                 )}
                 <div className="mt-4 flex flex-wrap gap-2 sm:mt-5">
@@ -1107,15 +1217,7 @@ export function ShiftPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setExtraFlow('closed')
-                      window.setTimeout(() => {
-                        explainRef.current?.scrollIntoView({
-                          behavior: 'smooth',
-                          block: 'start',
-                        })
-                      }, 50)
-                    }}
+                    onClick={() => setExtraFlow('closed')}
                     className="rounded-xl px-3.5 py-2 text-xs font-medium text-ink-soft hover:bg-surface sm:px-4 sm:py-2.5 sm:text-sm"
                   >
                     לא תודה
