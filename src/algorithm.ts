@@ -56,6 +56,12 @@ export interface WorkerLaneStats {
 }
 
 const DEFAULT_LOOKBACK_DAYS = 14
+/** Station rotation always looks at least this many calendar days (morning/afternoon only). */
+const ROTATION_LOOKBACK_DAYS = 14
+
+function isDayShift(shiftType: ShiftType): boolean {
+  return shiftType === 'morning' || shiftType === 'afternoon'
+}
 
 const EMPTY_HARD_BY_SHIFT: Record<ShiftType, number> = {
   morning: 0,
@@ -117,6 +123,15 @@ interface WorkerHistoryProfile {
   dayEasyInSameShiftType: number
   laneCounts: Map<string, number>
   lastLaneIds: Set<string>
+  /**
+   * Station rotation (key rule): morning/afternoon only over ≥14 days.
+   * Night placements are ignored for rotation.
+   */
+  rotationLaneCounts: Map<string, number>
+  /** Lower index = more recent day-shift placement on that lane */
+  rotationLaneRecency: Map<string, number>
+  /** Lanes from most recent morning/afternoon placement */
+  lastDayLaneIds: Set<string>
   /** Lanes held on previous calendar day in the same shift type (morning→morning etc.) */
   prevDaySameShiftLaneIds: Set<string>
   laneRecency: Map<string, number>
@@ -143,6 +158,9 @@ function buildWorkerProfile(
     dayEasyInSameShiftType: 0,
     laneCounts: new Map(),
     lastLaneIds: new Set(),
+    rotationLaneCounts: new Map(),
+    rotationLaneRecency: new Map(),
+    lastDayLaneIds: new Set(),
     prevDaySameShiftLaneIds: new Set(),
     laneRecency: new Map(),
     lastWasHard: false,
@@ -151,6 +169,8 @@ function buildWorkerProfile(
   }
 
   let capturedLastShift = false
+  let capturedLastDayShift = false
+  let dayShiftIndex = 0
 
   history.forEach((shift, shiftIndex) => {
     const placements: Lane[] = []
@@ -167,7 +187,8 @@ function buildWorkerProfile(
       if (
         prevDate &&
         shift.date === prevDate &&
-        shift.shiftType === currentShiftType
+        shift.shiftType === currentShiftType &&
+        isDayShift(currentShiftType)
       ) {
         profile.prevDaySameShiftLaneIds.add(lane.id)
       }
@@ -203,6 +224,26 @@ function buildWorkerProfile(
         if (lane.intensity === 'hard') profile.lastWasHard = true
       }
       capturedLastShift = true
+    }
+
+    // Rotation: day shifts only (night does not count toward station history)
+    if (isDayShift(shift.shiftType)) {
+      for (const lane of placements) {
+        profile.rotationLaneCounts.set(
+          lane.id,
+          (profile.rotationLaneCounts.get(lane.id) ?? 0) + 1,
+        )
+        if (!profile.rotationLaneRecency.has(lane.id)) {
+          profile.rotationLaneRecency.set(lane.id, dayShiftIndex)
+        }
+      }
+      if (!capturedLastDayShift) {
+        for (const lane of placements) {
+          profile.lastDayLaneIds.add(lane.id)
+        }
+        capturedLastDayShift = true
+      }
+      dayShiftIndex += 1
     }
   })
 
@@ -352,11 +393,9 @@ function easyStaffingRemaining(otherOpen: Lane[]): number {
  * Ranking for a lane (lower = better). Order is intentional and stable:
  * 1) afternoon handoff
  * 2) night→afternoon recovery (day after night only)
- * 3) avoid same lane as yesterday's same shift type (morning→morning etc.)
- * 4) avoid immediate same-lane repeat from last placement
- * 5) lane frequency / recency (rotation)
- * 6) load / hard balance by intensity
- * 7) versatility only if gap ≥ VERSATILITY_MIN_GAP (avoid noise)
+ * 3) KEY — station rotation over ≥14 days (morning/afternoon only; skipped on night)
+ * 4) load / hard balance by intensity
+ * 5) versatility only if gap ≥ VERSATILITY_MIN_GAP
  */
 function compareForLane(
   a: Worker,
@@ -380,32 +419,31 @@ function compareForLane(
   const aRec = recoveringIds.has(a.id) ? 1 : 0
   const bRec = recoveringIds.has(b.id) ? 1 : 0
   if (aRec !== bRec) {
-    // Afternoon day-after-night only (recoveringIds is empty otherwise).
     if (lane.intensity === 'hard') return aRec - bRec
     if (lane.intensity === 'easy') return bRec - aRec
-    // Medium: keep recoverees for easy if easy slots remain; else mild prefer recoveree.
     const easyLeft = easyStaffingRemaining(otherOpen)
     if (easyLeft > 0) return aRec - bRec
     return bRec - aRec
   }
 
-  // Strong rotation: same shift type yesterday on this lane (e.g. morning→morning).
-  const aPrevDay = pa.prevDaySameShiftLaneIds.has(lane.id) ? 1 : 0
-  const bPrevDay = pb.prevDaySameShiftLaneIds.has(lane.id) ? 1 : 0
-  if (aPrevDay !== bPrevDay) return aPrevDay - bPrevDay
+  // Station rotation is a key rule for morning/afternoon only (not night).
+  if (isDayShift(currentShiftType)) {
+    const aPrevDay = pa.prevDaySameShiftLaneIds.has(lane.id) ? 1 : 0
+    const bPrevDay = pb.prevDaySameShiftLaneIds.has(lane.id) ? 1 : 0
+    if (aPrevDay !== bPrevDay) return aPrevDay - bPrevDay
 
-  // Also avoid bouncing back to the absolute last placement lane.
-  const aWasLastHere = pa.lastLaneIds.has(lane.id) ? 1 : 0
-  const bWasLastHere = pb.lastLaneIds.has(lane.id) ? 1 : 0
-  if (aWasLastHere !== bWasLastHere) return aWasLastHere - bWasLastHere
+    const aRot = pa.rotationLaneCounts.get(lane.id) ?? 0
+    const bRot = pb.rotationLaneCounts.get(lane.id) ?? 0
+    if (aRot !== bRot) return aRot - bRot
 
-  const aTimes = pa.laneCounts.get(lane.id) ?? 0
-  const bTimes = pb.laneCounts.get(lane.id) ?? 0
-  if (aTimes !== bTimes) return aTimes - bTimes
+    const aDayLast = pa.lastDayLaneIds.has(lane.id) ? 1 : 0
+    const bDayLast = pb.lastDayLaneIds.has(lane.id) ? 1 : 0
+    if (aDayLast !== bDayLast) return aDayLast - bDayLast
 
-  const aRecency = pa.laneRecency.get(lane.id) ?? Number.POSITIVE_INFINITY
-  const bRecency = pb.laneRecency.get(lane.id) ?? Number.POSITIVE_INFINITY
-  if (aRecency !== bRecency) return bRecency - aRecency
+    const aRotRec = pa.rotationLaneRecency.get(lane.id) ?? Number.POSITIVE_INFINITY
+    const bRotRec = pb.rotationLaneRecency.get(lane.id) ?? Number.POSITIVE_INFINITY
+    if (aRotRec !== bRotRec) return bRotRec - aRotRec
+  }
 
   if (lane.intensity === 'hard') {
     if (pa.lastWasHard !== pb.lastWasHard) {
@@ -450,6 +488,44 @@ function compareForLane(
   if (Math.abs(va - vb) >= VERSATILITY_MIN_GAP) return va - vb
 
   return 0
+}
+
+/** Prefer workers who haven't sat this station recently (day shifts, ≥14d). */
+function applyStationRotationPool(
+  pool: Worker[],
+  lane: Lane,
+  profiles: Map<string, WorkerHistoryProfile>,
+  staffingStandard: number,
+  currentShiftType: ShiftType,
+): Worker[] {
+  if (!isDayShift(currentShiftType)) return pool
+
+  const notYesterday = pool.filter(
+    (w) => !profiles.get(w.id)!.prevDaySameShiftLaneIds.has(lane.id),
+  )
+  if (notYesterday.length >= staffingStandard) {
+    pool = notYesterday
+  }
+
+  const neverHere = pool.filter(
+    (w) => (profiles.get(w.id)!.rotationLaneCounts.get(lane.id) ?? 0) === 0,
+  )
+  if (neverHere.length >= staffingStandard) {
+    return neverHere
+  }
+
+  const counts = pool.map(
+    (w) => profiles.get(w.id)!.rotationLaneCounts.get(lane.id) ?? 0,
+  )
+  const minCount = Math.min(...counts)
+  const minimal = pool.filter(
+    (w) => (profiles.get(w.id)!.rotationLaneCounts.get(lane.id) ?? 0) === minCount,
+  )
+  if (minimal.length >= staffingStandard) {
+    return minimal
+  }
+
+  return pool
 }
 
 function fmtLoad(n: number): string {
@@ -556,19 +632,23 @@ function buildPlacementReasons(
     )
   }
 
-  const timesHere = p.laneCounts.get(lane.id) ?? 0
-  if (p.prevDaySameShiftLaneIds.has(lane.id)) {
-    reasons.push(
-      `הייתה בנתיב זה במשמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול — בדרך כלל נמנעים מחזרה באותו סוג משמרת ביום העוקב (אין חלופה מספיקה)`,
-    )
+  const rotTimes = p.rotationLaneCounts.get(lane.id) ?? 0
+  if (isDayShift(currentShiftType)) {
+    if (p.prevDaySameShiftLaneIds.has(lane.id)) {
+      reasons.push(
+        `רוטציה: הייתה בנתיב זה במשמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול — נמנעים מחזרה ביום העוקב כשיש חלופה`,
+      )
+    } else if (rotTimes === 0) {
+      reasons.push(
+        `רוטציה (בוקר/צהריים, ${ROTATION_LOOKBACK_DAYS} יום, ללא לילה): לא הייתה בעמדה זו — עדיפות`,
+      )
+    } else {
+      reasons.push(
+        `רוטציה (בוקר/צהריים, ${ROTATION_LOOKBACK_DAYS} יום, ללא לילה): ${rotTimes} פעמים בעמדה זו — מעדיפים מי שהיה פחות`,
+      )
+    }
   } else if (p.lastLaneIds.has(lane.id)) {
-    reasons.push(
-      'היה בנתיב זה בשיבוץ האחרון — בדרך כלל נמנעים מחזרה מיידית (אין חלופה טובה יותר בדירוג)',
-    )
-  } else if (timesHere === 0) {
-    reasons.push('לא שובץ בנתיב זה בחלון ההיסטוריה — תורמים לרוטציה')
-  } else {
-    reasons.push(`היה בנתיב זה ${timesHere} פעמים בחלון ההיסטוריה — פחות חזרות ממועמדים אחרים`)
+    reasons.push('שיבוץ לילה — רוטציית עמדות ל־14 יום לא חלה; היה בנתיב בשיבוץ האחרון')
   }
 
   if (lane.intensity === 'hard') {
@@ -625,20 +705,34 @@ function buildPlacementReasons(
         diffs.push(`נשמר ${rival.fullName} למנוחה אחרי לילה`)
       }
     }
-    if (p.prevDaySameShiftLaneIds.has(lane.id) !== rp.prevDaySameShiftLaneIds.has(lane.id)) {
-      if (!p.prevDaySameShiftLaneIds.has(lane.id)) {
+    if (isDayShift(currentShiftType)) {
+      if (p.prevDaySameShiftLaneIds.has(lane.id) !== rp.prevDaySameShiftLaneIds.has(lane.id)) {
+        if (!p.prevDaySameShiftLaneIds.has(lane.id)) {
+          diffs.push(
+            `לא הייתה בנתיב זה במשמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול (בניגוד ל${rival.fullName})`,
+          )
+        }
+      }
+      const aRot = p.rotationLaneCounts.get(lane.id) ?? 0
+      const bRot = rp.rotationLaneCounts.get(lane.id) ?? 0
+      if (aRot !== bRot) {
         diffs.push(
-          `לא הייתה בנתיב זה במשמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול (בניגוד ל${rival.fullName})`,
+          `פחות פעמים בעמדה ב־${ROTATION_LOOKBACK_DAYS} יום ללא לילה (${aRot} מול ${bRot} של ${rival.fullName})`,
         )
+      } else if (p.lastDayLaneIds.has(lane.id) !== rp.lastDayLaneIds.has(lane.id)) {
+        if (!p.lastDayLaneIds.has(lane.id)) {
+          diffs.push(`לא חזרה מיידית לעמדה במשמרת יום (בניגוד ל${rival.fullName})`)
+        }
       }
     } else if (p.lastLaneIds.has(lane.id) !== rp.lastLaneIds.has(lane.id)) {
       if (!p.lastLaneIds.has(lane.id)) {
         diffs.push(`לא חזר מיד לאותו נתיב (בניגוד ל${rival.fullName})`)
       }
     }
+
     const aTimes = p.laneCounts.get(lane.id) ?? 0
     const bTimes = rp.laneCounts.get(lane.id) ?? 0
-    if (aTimes !== bTimes) {
+    if (aTimes !== bTimes && !isDayShift(currentShiftType)) {
       diffs.push(
         `פחות פעמים בנתיב זה (${aTimes} מול ${bTimes} של ${rival.fullName})`,
       )
@@ -670,7 +764,10 @@ export function runAssignmentAlgorithm(
 
   const currentDate = ctx?.date ?? '9999-12-31'
   const currentShiftType = ctx?.shiftType ?? 'morning'
-  const lookbackDays = ctx?.lookbackDays ?? DEFAULT_LOOKBACK_DAYS
+  const lookbackDays = Math.max(
+    ctx?.lookbackDays ?? DEFAULT_LOOKBACK_DAYS,
+    ROTATION_LOOKBACK_DAYS,
+  )
   const relevant = filterRelevantHistory(history, currentDate, lookbackDays)
   const morningCtx =
     currentShiftType === 'afternoon'
@@ -766,16 +863,14 @@ export function runAssignmentAlgorithm(
       }
     }
 
-    // Same shift type yesterday on this lane → exclude when alternatives exist
-    // (fixes morning→morning / afternoon→afternoon repeats like שיראל).
-    {
-      const rotated = pool.filter(
-        (w) => !profiles.get(w.id)!.prevDaySameShiftLaneIds.has(lane.id),
-      )
-      if (rotated.length >= lane.staffingStandard) {
-        pool = rotated
-      }
-    }
+    // Key rule: station rotation over ≥14 days (morning/afternoon; night excluded)
+    pool = applyStationRotationPool(
+      pool,
+      lane,
+      profiles,
+      lane.staffingStandard,
+      currentShiftType,
+    )
 
     const ranked = shuffle(pool).sort((a, b) =>
       compareForLane(
@@ -829,13 +924,15 @@ export function runAssignmentAlgorithm(
       }
     }
 
-    for (const id of picked) {
-      const prof = profiles.get(id)
-      if (!prof?.prevDaySameShiftLaneIds.has(lane.id)) continue
-      const name = workerById.get(id)?.fullName ?? id
-      warnings.push(
-        `חזרה לנתיב: "${name}" שובץ שוב ב"${lane.name}" אחרי משמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול (אין מספיק חלופות)`,
-      )
+    if (isDayShift(currentShiftType)) {
+      for (const id of picked) {
+        const prof = profiles.get(id)
+        if (!prof?.prevDaySameShiftLaneIds.has(lane.id)) continue
+        const name = workerById.get(id)?.fullName ?? id
+        warnings.push(
+          `חזרה לנתיב: "${name}" שובץ שוב ב"${lane.name}" אחרי משמרת ${SHIFT_TYPE_LABELS[currentShiftType]} אתמול (אין מספיק חלופות)`,
+        )
+      }
     }
 
     if (
